@@ -119,39 +119,61 @@ struct SharedStatePrivate
 	
 	void init(RGSSThreadData *threadData)
 	{
-        
+        fprintf(stderr, "[MKXP-Z] DEBUG: SharedStatePrivate::init starting...\n");
         startupTime = std::chrono::steady_clock::now();
         
 		/* Shaders have been compiled in ShaderSet's constructor */
 		if (gl.ReleaseShaderCompiler)
 			gl.ReleaseShaderCompiler();
 
+		// Re-query OpenGL caps now that context is definitely ready
+		_glState.caps.refresh();
+
 		std::string archPath = config.execName + gameArchExt();
+        fprintf(stderr, "[MKXP-Z] DEBUG: Archive path: %s\n", archPath.c_str());
 
 		for (size_t i = 0; i < config.patches.size(); ++i)
 			fileSystem.addPath(config.patches[i].c_str());
 
 		/* Check if a game archive exists */
+		// Debug: Log the full path we're trying to access
+		char cwd[1024];
+		if (getcwd(cwd, sizeof(cwd)) != NULL) {
+			fprintf(stderr, "[MKXP-Z] DEBUG: Current working directory: %s\n", cwd);
+		}
+		fprintf(stderr, "[MKXP-Z] DEBUG: Checking for archive at relative path: %s\n", archPath.c_str());
+		
 		FILE *tmp = fopen(archPath.c_str(), "rb");
 		if (tmp)
 		{
+			fprintf(stderr, "[MKXP-Z] DEBUG: Found game archive, adding path\n");
 			fileSystem.addPath(archPath.c_str());
 			fclose(tmp);
+		} else {
+			fprintf(stderr, "[MKXP-Z] DEBUG: Game archive NOT found at: %s\n", archPath.c_str());
 		}
 
+		fprintf(stderr, "[MKXP-Z] DEBUG: Adding current directory to filesystem\n");
 		fileSystem.addPath(".");
 
 		for (size_t i = 0; i < config.rtps.size(); ++i)
 			fileSystem.addPath(config.rtps[i].c_str());
 
-		if (config.pathCache)
+		if (config.pathCache) {
+			fprintf(stderr, "[MKXP-Z] DEBUG: Creating path cache (this may take a while)...\n");
 			fileSystem.createPathCache();
+			fprintf(stderr, "[MKXP-Z] DEBUG: Path cache creation complete\n");
+		} else {
+			fprintf(stderr, "[MKXP-Z] DEBUG: Path cache disabled\n");
+		}
 
+		fprintf(stderr, "[MKXP-Z] DEBUG: Initializing font sets...\n");
 		fileSystem.initFontSets(fontState);
 
 		globalTexW = 128;
 		globalTexH = 64;
 
+		fprintf(stderr, "[MKXP-Z] DEBUG: Creating global texture...\n");
 		globalTex = TEX::gen();
 		TEX::bind(globalTex);
 		TEX::setRepeat(false);
@@ -159,6 +181,7 @@ struct SharedStatePrivate
 		TEX::allocEmpty(globalTexW, globalTexH);
 		globalTexDirty = false;
 
+		fprintf(stderr, "[MKXP-Z] DEBUG: Creating FBO...\n");
 		TEXFBO::init(gpTexFBO);
 		/* Reuse starting values */
 		TEXFBO::allocEmpty(gpTexFBO, globalTexW, globalTexH);
@@ -166,8 +189,12 @@ struct SharedStatePrivate
 
 		/* RGSS3 games will call setup_midi, so there's
 		 * no need to do it on startup */
-		if (rgssVer <= 2)
+		if (rgssVer <= 2) {
+			fprintf(stderr, "[MKXP-Z] DEBUG: Initializing MIDI state...\n");
 			midiState.initIfNeeded(threadData->config);
+		}
+		
+		fprintf(stderr, "[MKXP-Z] DEBUG: SharedStatePrivate::init completed\n");
 	}
 
 	~SharedStatePrivate()

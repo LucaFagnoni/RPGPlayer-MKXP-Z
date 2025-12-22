@@ -27,6 +27,10 @@
 #include "sharedstate.h"
 #include "config.h"
 
+// iOS Support
+extern "C" unsigned int mkxpz_get_sdl_framebuffer();
+extern "C" void mkxpz_get_ios_screen_size(int *w, int *h);
+
 /* Struct wrapping GLuint for some light type safety */
 #define DEF_GL_ID \
 struct ID \
@@ -118,6 +122,12 @@ namespace FBO
 	DEF_GL_ID
 
 	extern ID boundFramebufferID;
+	
+	// iOS: Store the default framebuffer ID created by SDL for CAEAGLLayer
+	// On iOS, framebuffer 0 is INVALID - SDL creates its own FBO for the screen
+	// This must be queried via glGetIntegerv(GL_FRAMEBUFFER_BINDING) right after
+	// SDL_GL_MakeCurrent and stored here for use in blitBeginScreen
+	extern ID iosDefaultFramebuffer;
 
 	inline ID gen()
 	{
@@ -140,7 +150,9 @@ namespace FBO
 
 	static inline void unbind()
 	{
-		bind(ID(0));
+		// iOS FIX: unbind() means "return to default framebuffer"
+        // Use dynamic query to handle FBO ID changes
+		bind(ID(mkxpz_get_sdl_framebuffer()));
 	}
 
 	static inline void setTarget(TEX::ID target, unsigned colorAttach = 0)

@@ -1185,6 +1185,10 @@ static void mriBindingExecute() {
     RUBY_INIT_STACK;
     ruby_init();
     
+    // Initialize statically linked Ruby extensions (including zlib)
+    extern void Init_ext(void);
+    Init_ext();
+    
     std::vector<const char*> rubyArgsC{"mkxp-z"};
     rubyArgsC.push_back("-e ");
     void *node;

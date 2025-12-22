@@ -309,5 +309,17 @@ BDescVec loadBindings(const Config &conf)
 	if (readBindings(d, conf.customDataPath, conf.rgssVersion))
 		return d;
 
-	return genDefaultBindings(conf);
+	// File doesn't exist - generate defaults and AUTO-SAVE them
+	// This ensures the keybindings.mkxp{N} file exists for games that need it
+	// (e.g., Pokemon Essentials games that try to copy this file)
+	d = genDefaultBindings(conf);
+	
+	// Try to write the default bindings to disk so the file exists
+	writeBindings(d, conf.customDataPath, conf.rgssVersion);
+	
+	// Also write to "Data/" folder for games that look for it there
+	// (Pokemon Essentials and similar games expect keybindings.mkxp1 in Data/)
+	writeBindings(d, "Data/", conf.rgssVersion);
+	
+	return d;
 }

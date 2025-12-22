@@ -103,7 +103,36 @@ void GLViewport::apply(const IntRect &value) {
 
 void GLProgram::apply(const unsigned int &value) { gl.UseProgram(value); }
 
-GLState::Caps::Caps() { gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTexSize); }
+GLState::Caps::Caps() : maxTexSize(8192) {  // iOS safe default - never start with 0
+  int queriedSize = 0;
+  gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &queriedSize);
+  if (queriedSize > 0 && queriedSize <= 16384) {
+    maxTexSize = queriedSize;
+    fprintf(stderr, "[MKXP-Z] GL_MAX_TEXTURE_SIZE initialized to %d\n", maxTexSize);
+  } else {
+    fprintf(stderr, "[MKXP-Z] GL_MAX_TEXTURE_SIZE query failed or invalid (%d), using default %d\n", queriedSize, maxTexSize);
+  }
+}
+
+void GLState::Caps::refresh() {
+  int newMaxTexSize = 0;
+  gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &newMaxTexSize);
+  
+  if (newMaxTexSize > 0 && newMaxTexSize <= 16384) {
+    maxTexSize = newMaxTexSize;
+    fprintf(stderr, "[MKXP-Z] GL_MAX_TEXTURE_SIZE refreshed to %d\n", maxTexSize);
+  } else {
+    // Validate current maxTexSize - if it's garbage, reset to safe default
+    if (maxTexSize <= 0 || maxTexSize > 16384) {
+      int oldValue = maxTexSize;
+      maxTexSize = 8192;  // Force safe default
+      fprintf(stderr, "[MKXP-Z] WARNING: maxTexSize was invalid (%d), reset to safe default %d\n", oldValue, maxTexSize);
+    } else {
+      fprintf(stderr, "[MKXP-Z] GL_MAX_TEXTURE_SIZE query failed (%d), keeping current valid value: %d\n", 
+              newMaxTexSize, maxTexSize);
+    }
+  }
+}
 
 GLState::GLState(const Config &conf) {
   gl.Disable(GL_DEPTH_TEST);

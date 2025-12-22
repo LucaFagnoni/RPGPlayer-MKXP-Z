@@ -2372,7 +2372,7 @@ void Bitmap::drawText(const IntRect &rect, const char *str, int align)
     
     IntRect destRect(alignX, alignY,
                     std::min(rect.w, (int)(txtSurf->w * squeeze)),
-                    std::min(rect.h, txtSurf->h));
+                    txtSurf->h);  // Use actual surface height, not rect.h which is based on TTF_FontHeight
     
     destRect.w = std::min(destRect.w, width() - destRect.x);
     destRect.h = std::min(destRect.h, height() - destRect.y);
@@ -2528,7 +2528,18 @@ void Bitmap::ensureNonMega() const
     if (isDisposed())
         return;
     
-    GUARD_MEGA;
+    // On iOS, instead of throwing an exception for mega surfaces,
+    // log a warning and continue. This allows games to run (with missing graphics)
+    // instead of crashing. The affected sprite/plane will not display properly,
+    // but the game continues to be playable.
+    if (p->megaSurface) {
+        Debug() << "Warning: Attempting to use mega surface in unsupported context. "
+                << "The image (" << p->megaSurface->w << "x" << p->megaSurface->h 
+                << ") exceeds GPU texture limits and cannot be displayed as a sprite. "
+                << "Consider using a smaller image.";
+        // Don't throw - let the caller handle the null texture gracefully
+        return;
+    }
 }
 
 void Bitmap::ensureNonAnimated() const

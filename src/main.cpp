@@ -43,6 +43,7 @@
 #include "util/exception.h"
 #include "display/gl/gl-debug.h"
 #include "display/gl/gl-fun.h"
+#include "display/gl/gl-util.h"
 
 #include "filesystem/filesystem.h"
 
@@ -69,7 +70,11 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #ifdef MKXPZ_BUILD_XCODE
 #include <Availability.h>
 #include "TouchBar.h"
-#if !defined(__MAC_10_15) || __MAC_OS_X_VERSION_MAX_ALLOWED < __MAC_10_15
+// On iOS, we MUST NOT define MKXPZ_INIT_GL_LATER because iOS requires
+// all UIKit/OpenGL operations on the main thread. The GL context must be
+// pre-created on the main thread and passed to rgssThreadFun via RGSSThreadData.
+// Only define MKXPZ_INIT_GL_LATER for older macOS versions (< 10.15).
+#if !defined(IOS_PLATFORM) && (!defined(__MAC_10_15) || __MAC_OS_X_VERSION_MAX_ALLOWED < __MAC_10_15)
 #define MKXPZ_INIT_GL_LATER
 #endif
 #endif
@@ -116,30 +121,89 @@ static void printGLInfo() {
 static SDL_GLContext initGL(SDL_Window *win, Config &conf,
                             RGSSThreadData *threadData);
 
+extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak));
+
 int rgssThreadFun(void *userdata) {
+  fprintf(stderr, "[MKXP-Z] DEBUG: rgssThreadFun started\n");
   RGSSThreadData *threadData = static_cast<RGSSThreadData *>(userdata);
 
 #ifdef MKXPZ_INIT_GL_LATER
+  fprintf(stderr, "[MKXP-Z] DEBUG: About to call initGL (MKXPZ_INIT_GL_LATER)...\n");
   threadData->glContext =
       initGL(threadData->window, threadData->config, threadData);
   if (!threadData->glContext)
     return 0;
+  fprintf(stderr, "[MKXP-Z] DEBUG: initGL completed\n");
 #else
-  SDL_GL_MakeCurrent(threadData->window, threadData->glContext);
+  fprintf(stderr, "[MKXP-Z] DEBUG: About to call SDL_GL_MakeCurrent...\n");
+  
+  // Retry loop for context acquisition to handle potential race conditions
+  bool contextAcquired = false;
+  for (int i = 0; i < 10; ++i) {
+      int ret = SDL_GL_MakeCurrent(threadData->window, threadData->glContext);
+      if (ret == 0) {
+          const char* version = (const char*)gl.GetString(GL_VERSION);
+          if (version != nullptr) {
+              fprintf(stderr, "[MKXP-Z] ✅ Context acquired successfully on attempt %d. Version: %s\n", i+1, version);
+              contextAcquired = true;
+              break;
+          } else {
+               fprintf(stderr, "[MKXP-Z] ❌ MakeCurrent success but GL_VERSION is NULL (Attempt %d). Retrying...\n", i+1);
+               // Try to unbind first?
+               SDL_GL_MakeCurrent(threadData->window, NULL);
+          }
+      } else {
+          fprintf(stderr, "[MKXP-Z] ❌ SDL_GL_MakeCurrent failed: %s (Attempt %d)\n", SDL_GetError(), i+1);
+      }
+      SDL_Delay(100); // Wait 100ms before retry
+  }
+  
+  if (!contextAcquired) {
+      fprintf(stderr, "[MKXP-Z] 🚨 FATAL: Could not acquire OpenGL context after 10 attempts!\n");
+  } else {
+      fprintf(stderr, "[MKXP-Z] DEBUG: SDL_GL_MakeCurrent completed successfully\n");
+  }
+  
+  // iOS FIX: Get SDL's actual framebuffer ID from its internal OpenGL view
+  // GL_FRAMEBUFFER_BINDING returns 0 here because SDL doesn't bind its FBO until swap
+  // We use mkxpz_get_sdl_framebuffer() which accesses SDL's viewFramebuffer ivar via ObjC runtime
+  // This function is defined in mkxpz_ios_api.mm (app side) and linked at runtime
+  {
+    // Try to get SDL's framebuffer from ObjC runtime first
+    // extern "C" moved to global scope
+    GLint defaultFBO = 0;
+    
+    if (mkxpz_get_sdl_framebuffer) {
+      defaultFBO = (GLint)mkxpz_get_sdl_framebuffer();
+      fprintf(stderr, "[MKXP-Z] iOS: Got SDL framebuffer from ObjC runtime = %d\n", defaultFBO);
+    } else {
+      // Fallback to GL query (will likely return 0)
+      gl.GetIntegerv(GL_FRAMEBUFFER_BINDING, &defaultFBO);
+      fprintf(stderr, "[MKXP-Z] iOS: Fallback GL_FRAMEBUFFER_BINDING = %d\n", defaultFBO);
+    }
+    
+    FBO::iosDefaultFramebuffer = FBO::ID(defaultFBO);
+  }
 #endif
 
   /* Setup AL context */
+  fprintf(stderr, "[MKXP-Z] DEBUG: About to create OpenAL context...\n");
   ALCcontext *alcCtx = alcCreateContext(threadData->alcDev, 0);
 
   if (!alcCtx) {
     rgssThreadError(threadData, "Error creating OpenAL context");
     return 0;
   }
+  fprintf(stderr, "[MKXP-Z] DEBUG: OpenAL context created\n");
 
+  fprintf(stderr, "[MKXP-Z] DEBUG: About to call alcMakeContextCurrent...\n");
   alcMakeContextCurrent(alcCtx);
+  fprintf(stderr, "[MKXP-Z] DEBUG: alcMakeContextCurrent completed\n");
 
   try {
+    fprintf(stderr, "[MKXP-Z] DEBUG: About to call SharedState::initInstance...\n");
     SharedState::initInstance(threadData);
+    fprintf(stderr, "[MKXP-Z] DEBUG: SharedState::initInstance completed\n");
   } catch (const Exception &exc) {
     rgssThreadError(threadData, exc.msg);
     alcDestroyContext(alcCtx);
@@ -148,6 +212,7 @@ int rgssThreadFun(void *userdata) {
   }
 
   /* Start script execution */
+  fprintf(stderr, "[MKXP-Z] DEBUG: About to call scriptBinding->execute()...\n");
   scriptBinding->execute();
 
   threadData->rqTermAck.set();
@@ -441,7 +506,13 @@ int main(int argc, char *argv[]) {
 #endif
 
     /* Start RGSS thread */
-    SDL_Thread *rgssThread = SDL_CreateThread(rgssThreadFun, "rgss", &rtData);
+    // Use larger stack size (8 MB) for the RGSS thread to prevent stack overflow
+    // during Ruby script compilation. Complex games with many scripts can exhaust
+    // the default 512KB stack during iseq (instruction sequence) compilation.
+    // This fixes EXC_BAD_ACCESS crashes in remove_unreachable_chunk and similar
+    // Ruby internal functions that use stack allocation (ALLOCA_N).
+    const size_t rgssStackSize = 8 * 1024 * 1024;  // 8 MB
+    SDL_Thread *rgssThread = SDL_CreateThreadWithStackSize(rgssThreadFun, "rgss", rgssStackSize, &rtData);
 
     /* Start event processing */
     eventThread.process(rtData);

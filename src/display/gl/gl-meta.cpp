@@ -26,10 +26,15 @@
 #include "quad.h"
 #include "config.h"
 #include "etc.h"
+#include "gl-util.h"
 
 namespace FBO
 {
 	ID boundFramebufferID;
+	// iOS: The default framebuffer created by SDL for CAEAGLLayer
+	// Initialized to 0, but should be set to actual value from GL_FRAMEBUFFER_BINDING
+	// right after SDL_GL_MakeCurrent in the RGSS thread
+	ID iosDefaultFramebuffer;
 }
 
 namespace GLMeta
@@ -286,7 +291,9 @@ void blitBeginScreen(const Vec2i &size, int scaleIsSpecial)
 	blitDstHeightLores = 1;
 	blitDstHeightHires = 1;
 
-	_blitBegin(FBO::ID(0), size, scaleIsSpecial);
+	// iOS FIX: Use the actual default framebuffer obtained dynamically
+    // On iOS, framebuffer 0 is INVALID. The SDL view's FBO might change.
+	_blitBegin(FBO::ID(mkxpz_get_sdl_framebuffer()), size, scaleIsSpecial);
 }
 
 void blitSource(TEXFBO &source, int scaleIsSpecial)

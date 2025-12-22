@@ -3,10 +3,14 @@
 
 #include <SDL.h>
 #include <cstdint>
+#include <cstring>
+#include <string>
+#include <algorithm>
 
 #include "filesystem/filesystem.h"
 #include "miniffi.h"
 #include "binding-util.h"
+#include "debugwriter.h"
 
 #if RAPI_MAJOR >= 2
 #include <ruby/thread.h>
@@ -52,7 +56,43 @@ RB_METHOD_GUARD(MiniFFI_initialize) {
     SafeStringValue(libname);
     SafeStringValue(func);
 #ifdef __APPLE__
+    // On iOS, try to load but don't fail if the library doesn't exist
     void *hlib = SDL_LoadObject(mkxp_fs::normalizePath(RSTRING_PTR(libname), 1, 1).c_str());
+    
+    // iOS specific: If this looks like a Windows DLL (user32, kernel32, etc.), 
+    // silently fail instead of throwing an error. This allows games with 
+    // Windows-specific scripts (Fullscreen, Mouse, etc.) to continue running.
+    if (!hlib) {
+        const char* lib = RSTRING_PTR(libname);
+        // On iOS, stub ALL Windows DLLs - check for any .dll extension (case insensitive)
+        // or any known Windows system DLL names. Use lowercase comparison.
+        std::string libLower(lib);
+        std::transform(libLower.begin(), libLower.end(), libLower.begin(), ::tolower);
+        if (libLower.find(".dll") != std::string::npos ||
+            libLower.find("user32") != std::string::npos ||
+            libLower.find("kernel32") != std::string::npos ||
+            libLower.find("gdi32") != std::string::npos ||
+            libLower.find("shell32") != std::string::npos ||
+            libLower.find("ntdll") != std::string::npos ||
+            libLower.find("advapi32") != std::string::npos ||
+            libLower.find("ole32") != std::string::npos ||
+            libLower.find("winmm") != std::string::npos ||
+            libLower.find("rgss") != std::string::npos ||
+            libLower.find("linker") != std::string::npos ||
+            libLower.find("rubyscreen") != std::string::npos) {
+            // Mark as a stub - set function to null and return
+            rb_iv_set(self, "_func", INT2FIX(0));
+            rb_iv_set(self, "_funcname", func);
+            rb_iv_set(self, "_libname", libname);
+            rb_iv_set(self, "_is_stub", Qtrue);
+            rb_iv_set(self, "_imports", rb_ary_new());
+            rb_iv_set(self, "_exports", INT2FIX(_T_VOID));
+            Debug() << "MiniFFI: Stubbing Windows DLL '" << lib << "' on iOS";
+            if (rb_block_given_p())
+                rb_yield(self);
+            return Qnil;
+        }
+    }
 #else
     void *hlib = SDL_LoadObject(RSTRING_PTR(libname));
 #endif
@@ -65,10 +105,26 @@ RB_METHOD_GUARD(MiniFFI_initialize) {
         hfunc = SDL_LoadFunction(hlib, RSTRING_PTR(func_a));
     }
 #endif
-    if (!hfunc)
+    if (!hfunc) {
+#ifdef __APPLE__
+        // On iOS, stub instead of crash for any failed function load
+        rb_iv_set(self, "_func", INT2FIX(0));
+        rb_iv_set(self, "_funcname", func);
+        rb_iv_set(self, "_libname", libname);
+        rb_iv_set(self, "_is_stub", Qtrue);
+        rb_iv_set(self, "_imports", rb_ary_new());
+        rb_iv_set(self, "_exports", INT2FIX(_T_VOID));
+        Debug() << "MiniFFI: Failed to load function, stubbing on iOS";
+        if (rb_block_given_p())
+            rb_yield(self);
+        return Qnil;
+#else
         throw Exception(Exception::RuntimeError, "%s", SDL_GetError());
+#endif
+    }
     
     rb_iv_set(self, "_func", MVAL2RB((mffi_value)hfunc));
+    rb_iv_set(self, "_is_stub", Qfalse);
     rb_iv_set(self, "_funcname", func);
     rb_iv_set(self, "_libname", libname);
     
@@ -197,6 +253,12 @@ void* miniffi_call_cb(void *args) {
 #endif
 
 RB_METHOD_GUARD(MiniFFI_call) {
+    // On iOS, stubbed functions should just return 0
+    VALUE is_stub = rb_iv_get(self, "_is_stub");
+    if (RTEST(is_stub)) {
+        return INT2FIX(0);
+    }
+    
     MiniFFIFuncArgs param;
 #define params param.params
     VALUE func = rb_iv_get(self, "_func");

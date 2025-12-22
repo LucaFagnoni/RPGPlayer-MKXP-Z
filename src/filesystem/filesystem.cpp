@@ -662,7 +662,10 @@ void FileSystem::openRead(OpenHandler &handler, const char *filename) {
 void FileSystem::openReadRaw(SDL_RWops &ops, const char *filename,
                              bool freeOnClose) {
 
-  PHYSFS_File *handle = PHYSFS_openRead(normalize(filename, 0, 0).c_str());
+  /* Use desensitize to handle case-insensitive lookups via path cache */
+  std::string normalizedPath = normalize(filename, 0, 0);
+  const char *resolvedPath = desensitize(normalizedPath.c_str());
+  PHYSFS_File *handle = PHYSFS_openRead(resolvedPath);
 
   if (!handle)
     throw Exception(Exception::NoFileError, "%s", filename);
@@ -677,7 +680,24 @@ std::string FileSystem::normalize(const char *pathname, bool preferred,
 }
 
 bool FileSystem::exists(const char *filename) {
-  return PHYSFS_exists(normalize(filename, false, false).c_str());
+  std::string normalized = normalize(filename, false, false);
+  int result = PHYSFS_exists(normalized.c_str());
+  fprintf(stderr, "[MKXP-Z] FileSystem::exists('%s') -> normalized='%s' -> PHYSFS_exists=%d\n", 
+          filename, normalized.c_str(), result);
+  
+  // Also log the search path for debugging
+  static bool searchPathLogged = false;
+  if (!searchPathLogged) {
+    char **searchPath = PHYSFS_getSearchPath();
+    fprintf(stderr, "[MKXP-Z] PHYSFS search paths:\n");
+    for (char **i = searchPath; *i != NULL; i++) {
+      fprintf(stderr, "  - %s\n", *i);
+    }
+    PHYSFS_freeList(searchPath);
+    searchPathLogged = true;
+  }
+  
+  return result != 0;
 }
 
 const char *FileSystem::desensitize(const char *filename) {

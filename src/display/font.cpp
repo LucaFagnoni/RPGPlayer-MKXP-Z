@@ -21,6 +21,13 @@
 
 #include "font.h"
 
+#include <SDL_ttf.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_SFNT_NAMES_H
+#include FT_TRUETYPE_IDS_H
+#include FT_TRUETYPE_TABLES_H
+
 #include "sharedstate.h"
 #include "filesystem.h"
 #include "exception.h"
@@ -36,17 +43,8 @@
 #include <cctype>
 #include <array>
 
-#ifdef MKXPZ_BUILD_XCODE
-#include "filesystem/filesystem.h"
-#endif
-
-#include <SDL_ttf.h>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include FT_TRUETYPE_TABLES_H
-
-#ifndef MKXPZ_BUILD_XCODE
+// Enable embedded font for Xcode/iOS builds too
+//#ifndef MKXPZ_BUILD_XCODE
 #ifndef MKXPZ_CJK_FONT
 #include "liberation.ttf.xxd"
 #else
@@ -73,15 +71,15 @@ BUNDLED_FONT_DECL(liberation)
 #define BNDL_F_D(f) BUNDLED_FONT_D(f)
 #define BNDL_F_L(f) BUNDLED_FONT_L(f)
 
-#endif
+//#endif
 
 static SDL_RWops *openBundledFont()
 {
-#ifndef MKXPZ_BUILD_XCODE
+//#ifndef MKXPZ_BUILD_XCODE
     return SDL_RWFromConstMem(BNDL_F_D(BUNDLED_FONT), BNDL_F_L(BUNDLED_FONT));
-#else
-    return SDL_RWFromFile(mkxp_fs::getPathForAsset("Fonts/liberation", "ttf").c_str(), "rb");
-#endif
+//#else
+//    return SDL_RWFromFile(mkxp_fs::getPathForAsset("Fonts/liberation", "ttf").c_str(), "rb");
+//#endif
 }
 
 
@@ -510,8 +508,11 @@ _TTF_Font *SharedFontState::getFont(std::string family,
 			shState->fileSystem().openReadRaw(*ops, path, true);
 		} catch (const Exception &e) {
 			SDL_FreeRW(ops);
-			p->size_to_ppem.remove(key);
-			throw e;
+			/* Font file not found - fall back to bundled font */
+			Debug() << "Font file not found, using fallback:" << path;
+			family = "";
+			key = FontSizeKey(family, size);
+			ops = openBundledFont();
 		}
 	}
 
@@ -744,7 +745,7 @@ struct FontPrivate
 	}
 };
 
-std::string FontPrivate::defaultName     = "Arial";
+std::string FontPrivate::defaultName     = "";
 int         FontPrivate::defaultSize     = 22;
 bool        FontPrivate::defaultBold     = false;
 bool        FontPrivate::defaultItalic   = false;

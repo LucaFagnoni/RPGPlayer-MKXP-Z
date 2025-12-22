@@ -34,7 +34,12 @@ struct GLProperty
 {
 	~GLProperty()
 	{
-		assert(stack.size() == 0);
+		// On iOS, don't crash if stack isn't empty - script exceptions can leave
+		// the GL state stack unbalanced. Just clear it and continue.
+		if (stack.size() != 0) {
+			// Clear the stack to avoid memory leaks
+			while (!stack.empty()) stack.pop();
+		}
 	}
 
 	void init(const T &value)
@@ -129,6 +134,7 @@ public:
 		int maxTexSize;
 
 		Caps();
+		void refresh();  // Re-query OpenGL caps after context is ready
 
 	} caps;
 

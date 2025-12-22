@@ -967,11 +967,15 @@ struct GraphicsPrivate {
     
     void checkResize(bool skipIntScaleBuffer = false) {
         if (threadData->windowSizeMsg.poll(winSize)) {
-            /* Query the actual size in pixels, not units */
-            Vec2i drawableSize(winSize);
-            threadData->drawableSizeMsg.poll(drawableSize);
+            /* iOS FIX: Use mkxpz_get_ios_screen_size() to get drawable size directly
+             * instead of polling drawableSizeMsg, which can have race conditions
+             * and return window size (667) instead of drawable size (1334) */
+            int drW, drH;
+            mkxpz_get_ios_screen_size(&drW, &drH);
             
-            backingScaleFactor = drawableSize.x / winSize.x;
+            Vec2i drawableSize = (drW > 0 && drH > 0) ? Vec2i(drW, drH) : winSize;
+            
+            backingScaleFactor = (float)drawableSize.x / winSize.x;
             winSize = drawableSize;
             
             /* Make sure integer buffers are rebuilt before screen offsets are
@@ -1002,11 +1006,27 @@ struct GraphicsPrivate {
     }
     
     void swapGLBuffer() {
+        static int swapCount = 0;
+        if (swapCount < 5 || swapCount % 100 == 0) {
+            fprintf(stderr, "[MKXP-Z] DEBUG: swapGLBuffer #%d starting...\n", swapCount);
+        }
         fpsLimiter.delay();
+        
+        // iOS: Bind SDL's framebuffer before swap
+        unsigned int fboId = mkxpz_get_sdl_framebuffer();
+        if (swapCount < 5) {
+            fprintf(stderr, "[MKXP-Z] DEBUG: FBO ID for swap: %u\n", fboId);
+        }
+        FBO::bind(FBO::ID(fboId));
+
         SDL_GL_SwapWindow(threadData->window);
         
         ++frameCount;
+        swapCount++;
         
+        if (swapCount <= 5 || swapCount % 100 == 0) {
+            fprintf(stderr, "[MKXP-Z] DEBUG: swapGLBuffer #%d completed, frame count: %d\n", swapCount, frameCount);
+        }
         threadData->ethread->notifyFrame();
     }
     
@@ -1091,7 +1111,18 @@ struct GraphicsPrivate {
 
         int scaleIsSpecial = GLMeta::blitScaleIsSpecial(integerScaleBuffer, false, IntRect(0, 0, scSize.x, scSize.y), integerScaleActive ? integerScaleBuffer : screen.getPP().frontBuffer(), IntRect(0, 0, sourceSize.x, sourceSize.y));
 
-        GLMeta::blitBeginScreen(winSize, scaleIsSpecial);
+        // iOS FIX: Ensure correct physical viewport size & Reset Scissor
+        int drW, drH;
+        // SDL_GL_GetDrawableSize crashes on background thread in iOS! Use helper.
+        mkxpz_get_ios_screen_size(&drW, &drH);
+        Vec2i blitSize = (drW > 0 && drH > 0) ? Vec2i(drW, drH) : winSize;
+        
+        gl.Disable(GL_SCISSOR_TEST);
+        
+        // Also force correct viewport explicitly here
+        if (drW > 0) gl.Viewport(0, 0, drW, drH);
+
+        GLMeta::blitBeginScreen(blitSize, scaleIsSpecial);
         //GLMeta::blitSource(screen.getPP().frontBuffer(), scaleIsSpecial);
 
         if (integerScaleActive)
@@ -1186,6 +1217,10 @@ double Graphics::lastUpdate() {
 }
 
 void Graphics::update(bool checkForShutdown) {
+    static int updateCount = 0;
+    if (updateCount < 5 || updateCount % 100 == 0) {
+        fprintf(stderr, "[MKXP-Z] DEBUG: Graphics::update #%d starting, checkForShutdown=%d...\n", updateCount, checkForShutdown);
+    }
     p->threadData->rqWindowAdjust.wait();
     p->last_update = shState->runTime();
     
@@ -1227,7 +1262,11 @@ void Graphics::update(bool checkForShutdown) {
     }
     
     p->checkResize();
+    if (updateCount < 5 || updateCount % 100 == 0) {
+        fprintf(stderr, "[MKXP-Z] DEBUG: Graphics::update #%d calling redrawScreen...\n", updateCount);
+    }
     p->redrawScreen();
+    updateCount++;
 }
 
 void Graphics::freeze() {

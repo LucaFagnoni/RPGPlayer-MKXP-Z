@@ -75,3 +75,9 @@ DerivedData/
 
 ## Gcc Patch
 /*.gcno
+# iOS Build Artifacts
+ios/build/
+ios/build_device/
+ios/build_sim/
+ios/.DS_Store
+

@@ -127,6 +127,11 @@ TEXFBO TexPool::request(int width, int height)
 	}
 
 	int maxSize = glState.caps.maxTexSize;
+	// iOS: If maxTexSize is 0 or unreasonably low, OpenGL context wasn't ready.
+	// Use a safe default (4096 is common on modern iOS devices, 8192+ on newer ones)
+	if (maxSize <= 0) {
+		maxSize = 4096;
+	}
 	if (width > maxSize || height > maxSize)
 		throw Exception(Exception::MKXPError,
 		                "Texture dimensions [%d, %d] exceed hardware capabilities",
