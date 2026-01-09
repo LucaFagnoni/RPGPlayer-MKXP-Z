@@ -132,10 +132,29 @@ TEXFBO TexPool::request(int width, int height)
 	if (maxSize <= 0) {
 		maxSize = 4096;
 	}
-	if (width > maxSize || height > maxSize)
-		throw Exception(Exception::MKXPError,
-		                "Texture dimensions [%d, %d] exceed hardware capabilities",
-		                width, height);
+	
+	// iOS TEXTURE CLAMPING: Instead of throwing an exception when texture is too large,
+	// clamp the dimensions to the maximum supported size. This fixes crashes in
+	// Pokemon Essentials games that create 16384+ pixel tall tileset composites.
+	bool wasClamped = false;
+	int originalWidth = width;
+	int originalHeight = height;
+	
+	if (width > maxSize) {
+		width = maxSize;
+		wasClamped = true;
+	}
+	if (height > maxSize) {
+		height = maxSize;
+		wasClamped = true;
+	}
+	
+	if (wasClamped) {
+		fprintf(stderr, "[MKXP-Z] WARNING: Texture dimensions [%d, %d] exceed hardware limit (%d). Clamped to [%d, %d]\n",
+		        originalWidth, originalHeight, maxSize, width, height);
+		// Update the size for cache key
+		size = Size(width, height);
+	}
 
 	/* Nope, create it instead */
 	TEXFBO::init(cnode.obj);
