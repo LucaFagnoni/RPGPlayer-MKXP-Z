@@ -337,21 +337,34 @@ static void mriBindingInit() {
         "# Also patch the 'class' keyword behavior by catching the error at eval level\n"
         "# This is done by setting a trace that rescues and continues\n"
         "module MKXPZSuperclassFix\n"
-        "  def self.wrap_eval(code, binding_obj = nil, filename = nil, lineno = 1)\n"
+        "  def self.wrap_eval(caller_binding, code, *args)\n"
+        "    binding_obj = args[0] || caller_binding\n"
+        "    filename = args[1] || '(eval)'\n"
+        "    lineno = args[2] || 1\n"
         "    begin\n"
-        "      if binding_obj\n"
-        "        eval(code, binding_obj, filename || '(eval)', lineno)\n"
-        "      else\n"
-        "        eval(code)\n"
-        "      end\n"
+        "      eval(code, binding_obj, filename, lineno)\n"
         "    rescue TypeError => e\n"
         "      if e.message.include?('superclass mismatch')\n"
-        "        # Try to extract class name and redefine without superclass\n"
-        "        if code =~ /class\\s+(\\w+)\\s*<\\s*\\w+/\n"
-        "          class_name = $1\n"
-        "          # Re-eval opening the existing class\n"
-        "          new_code = code.sub(/class\\s+#{class_name}\\s*<\\s*\\w+/, \"class #{class_name}\")\n"
-        "          return eval(new_code, binding_obj, filename || '(eval)', lineno)\n"
+        "        # 1. Extract class name (e.g. 'PokemonSystem' or 'Module::Class')\n"
+        "        if e.message =~ /for class\\s+([\\w:]+)/\n"
+        "          target_class = $1\n"
+        "          $stderr.puts \"[MKXP-Z] Superclass mismatch detected for: #{target_class}\"\n"
+        "\n"
+        "          # 2. Relaxed Regex: Support Optional namespace prefix (ending in ::) and any superclass expression\n"
+        "          # Matches: 'class PokemonDataBox < ...' OR 'class Battle::Scene::PokemonDataBox < ...'\n"
+        "          pattern = /class\\s+((?:[\\w:]*::)?)#{Regexp.escape(target_class)}\\s*<\\s*[^;\\n]+/\n"
+        "\n"
+        "          if code =~ pattern\n"
+        "            # 3. Apply Fix: Remove superclass inheritance but KEEP the full namespace prefix\n"
+        "            new_code = code.sub(pattern, \"class \\\\1#{target_class}\")\n"
+        "            $stderr.puts \"[MKXP-Z] Fixed: Removed superclass from #{target_class} (Prefix: \\\\1)\"\n"
+        "            # Recursive call to handle potential SUBSEQUENT errors in the same file\n"
+        "            return wrap_eval(caller_binding, new_code, binding_obj, filename, lineno)\n"
+        "          else\n"
+        "            $stderr.puts \"[MKXP-Z] FAILED to find class definition in eval code!\"\n"
+        "            $stderr.puts \"[MKXP-Z] Code snippet (Start): #{code[0..100].inspect}\"\n"
+        "            $stderr.puts \"[MKXP-Z] Code snippet (End): #{code[-100..-1].inspect if code.length > 100}\"\n"
+        "          end\n"
         "        end\n"
         "        raise\n"
         "      else\n"
@@ -1672,6 +1685,19 @@ static std::string preprocessRuby18Syntax(const std::string& script) {
         return script;
     }
     
+    // =========================================================================
+    // 4. Sanitize invalid multibyte escapes in regexes (Fix for Pokemon Iberia)
+    // =========================================================================
+    // Ruby 3.x is strict about invalid multibyte escape sequences in UTF-8.
+    // Some legacy scripts (like PSystem_Utilities) use ranges like \x7f-\x9f 
+    // which are invalid in UTF-8 regexes. We strip the high-byte range.
+    try {
+        std::regex multibyteEscapePattern(R"(\\x7f-\\x9f)");
+        result = std::regex_replace(result, multibyteEscapePattern, "\\x7f");
+    } catch (const std::regex_error& e) {
+         Debug() << "Multibyte escape patch regex error:" << e.what();
+    }
+    
     return result;
 }
 
@@ -1770,6 +1796,61 @@ static std::string wrapScriptForClassVariableCompat(const std::string &script, c
     Debug() << "[MKXP-Z] Ruby 3.x compat: Wrapped script '" << scriptName << "' for class variable access";
     
     return wrapped;
+}
+
+// Ruby 1.8 -> 3.x compatibility: Fix "retry if condition" syntax
+// In Ruby 1.8, retry could be used inside loops (while, until, loop do).
+// In Ruby 3.x, retry is ONLY valid inside begin...rescue...end blocks.
+// This function converts "retry if condition" to "redo if condition".
+static bool needsRetrySyntaxFix(const std::string &script) {
+    // Quick check: look for "retry if" or "retry unless" patterns
+    size_t pos = script.find("retry");
+    while (pos != std::string::npos) {
+        // Check if it's followed by whitespace and then "if" or "unless"
+        size_t afterRetry = pos + 5;
+        while (afterRetry < script.length() && (script[afterRetry] == ' ' || script[afterRetry] == '\t'))
+            afterRetry++;
+        
+        if (afterRetry < script.length()) {
+            if (script.substr(afterRetry, 2) == "if" || script.substr(afterRetry, 6) == "unless") {
+                return true;
+            }
+        }
+        
+        pos = script.find("retry", pos + 1);
+    }
+    return false;
+}
+
+static std::string fixRetrySyntax(const std::string &script, const char* scriptName) {
+    std::string result = script;
+    
+    // Find and replace "retry if" -> "redo if" and "retry unless" -> "redo unless"
+    size_t pos = 0;
+    while ((pos = result.find("retry", pos)) != std::string::npos) {
+        // Check if it's followed by whitespace and then "if" or "unless"
+        size_t afterRetry = pos + 5;
+        while (afterRetry < result.length() && (result[afterRetry] == ' ' || result[afterRetry] == '\t'))
+            afterRetry++;
+        
+        if (afterRetry < result.length()) {
+            bool isIf = (result.substr(afterRetry, 2) == "if" && 
+                        (afterRetry + 2 >= result.length() || !isalnum(result[afterRetry + 2])));
+            bool isUnless = (result.substr(afterRetry, 6) == "unless" && 
+                            (afterRetry + 6 >= result.length() || !isalnum(result[afterRetry + 6])));
+            
+            if (isIf || isUnless) {
+                // Replace "retry" with "redo"
+                result.replace(pos, 5, "redo");
+                Debug() << "[MKXP-Z] SYNTAX FIX: Converting 'retry " << (isIf ? "if" : "unless") 
+                        << "' to 'redo " << (isIf ? "if" : "unless") << "' in script '" << scriptName << "'";
+            }
+        }
+        
+        pos++;
+    }
+    
+    return result;
 }
 
 bool evalScript(VALUE string, const char *filename)
@@ -1879,10 +1960,38 @@ static void runRMXPScripts(BacktraceData &btData) {
         // Preprocess Ruby 1.8 syntax for compatibility with Ruby 4.0's Prism parser
         std::string processedScript = preprocessRuby18Syntax(decodeBuffer.c_str());
         
+        // Fix retry syntax (Ruby 1.8 -> 3.x compatibility)
+        // In Ruby 1.8, "retry if condition" was valid in loops. In Ruby 3.x, it's a syntax error.
+        if (needsRetrySyntaxFix(processedScript)) {
+            processedScript = fixRetrySyntax(processedScript, RSTRING_PTR(scriptName));
+        }
+        
         // Ruby 3.x compatibility: wrap scripts that use @@class_variables in toplevel singleton class
         // This fixes "class variable access from toplevel" RuntimeError
         if (needsClassVariableCompat(processedScript)) {
             processedScript = wrapScriptForClassVariableCompat(processedScript, RSTRING_PTR(scriptName));
+        }
+
+        // =========================================================================
+        // PluginManager Superclass Mismatch Fix
+        // =========================================================================
+        // Intercept 'eval' calls inside PluginManager to catch Game_Temp superclass mismatch.
+        // We replace 'eval(' with 'MKXPZSuperclassFix.wrap_eval(binding, '
+        // passing the current binding to maintain scope.
+        std::string sName = RSTRING_PTR(scriptName);
+        if (sName.find("PluginManager") != std::string::npos) {
+             size_t start_pos = 0;
+             // Regex replacement would be safer but basic string replace works for 'eval('
+             while((start_pos = processedScript.find("eval(", start_pos)) != std::string::npos) {
+                 // Verify it's not part of another word like 'module_eval('
+                 if (start_pos == 0 || (!isalnum(processedScript[start_pos-1]) && processedScript[start_pos-1] != '_')) {
+                     processedScript.replace(start_pos, 5, "MKXPZSuperclassFix.wrap_eval(binding, ");
+                     start_pos += 37; // Length of replacement string
+                     Debug() << "[MKXP-Z] Patched PluginManager eval call to use SuperclassFix";
+                 } else {
+                     start_pos += 5;
+                 }
+             }
         }
         
         rb_ary_store(script, 3, rb_utf8_str_new_cstr(processedScript.c_str()));
@@ -1980,12 +2089,253 @@ static void runRMXPScripts(BacktraceData &btData) {
             // VERBOSE LOGGING: Log every script
             fprintf(stderr, "[MKXP-Z] [%03ld/%ld] Executing: %s\n", i, scriptCount, scriptName);
             
+            // ================================================================
+            // WIN32API POSTLOAD PATCH - Run before Main script
+            // This patches GetAsyncKeyState/GetKeyState to use Input.raw_key_states
+            // which allows virtual gamepad input to be detected by games using Win32 API
+            // ================================================================
+            if (strcmp(scriptName, "Main") == 0) {
+                fprintf(stderr, "[MKXP-Z] Applying Win32API GetAsyncKeyState postload patch...\n");
+                
+                const char* win32apiPatch = R"RUBY(
+# Win32API GetAsyncKeyState/GetKeyState Postload Patch
+# Patches the game's Win32API class to use Input.raw_key_states
+# for proper virtual gamepad support on iOS
+
+if Object.const_defined?(:Win32API)
+  puts "[MKXP-Z] Patching Win32API for GetAsyncKeyState/GetKeyState..."
+  
+  # Windows VK to SDL Scancode mapping
+  $__mkxpz_vk_to_sdl = {
+    0x0D => 0x28,  # VK_RETURN -> SDL_SCANCODE_RETURN
+    0x1B => 0x29,  # VK_ESCAPE -> SDL_SCANCODE_ESCAPE
+    0x20 => 0x2C,  # VK_SPACE -> SDL_SCANCODE_SPACE
+    0x08 => 0x2A,  # VK_BACK -> SDL_SCANCODE_BACKSPACE
+    0x09 => 0x2B,  # VK_TAB -> SDL_SCANCODE_TAB
+    0x25 => 0x50,  # VK_LEFT -> SDL_SCANCODE_LEFT
+    0x26 => 0x52,  # VK_UP -> SDL_SCANCODE_UP
+    0x27 => 0x4F,  # VK_RIGHT -> SDL_SCANCODE_RIGHT
+    0x28 => 0x51,  # VK_DOWN -> SDL_SCANCODE_DOWN
+    0x10 => -10,   # VK_SHIFT -> combined LSHIFT/RSHIFT
+    0xA0 => 0xE1,  # VK_LSHIFT
+    0xA1 => 0xE5,  # VK_RSHIFT
+    0x11 => -11,   # VK_CONTROL -> combined LCTRL/RCTRL
+    0xA2 => 0xE0,  # VK_LCONTROL
+    0xA3 => 0xE4,  # VK_RCONTROL
+    0x12 => -12,   # VK_MENU -> combined LALT/RALT
+    0xA4 => 0xE2,  # VK_LMENU
+    0xA5 => 0xE6,  # VK_RMENU
+  }
+  
+  # Add A-Z (VK 0x41-0x5A -> SDL 0x04-0x1D)
+  (0x41..0x5A).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x41 + 0x04 }
+  # Add 0-9 (VK 0x30-0x39 -> SDL 0x27, 0x1E-0x26)
+  $__mkxpz_vk_to_sdl[0x30] = 0x27  # 0
+  (0x31..0x39).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x31 + 0x1E }
+  # Add F1-F12 (VK 0x70-0x7B -> SDL 0x3A-0x45)
+  (0x70..0x7B).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x70 + 0x3A }
+  
+  begin
+    win32api_class = Object.const_get(:Win32API)
+    
+    # Store original call method
+    if win32api_class.instance_methods.include?(:call)
+      original_call = win32api_class.instance_method(:call)
+      
+      # Define helper to check key state
+      define_method(:__mkxpz_check_keystate) do |vk_code|
+        begin
+          states = Input.raw_key_states rescue nil
+          return 0 unless states
+          
+          sdl_scan = $__mkxpz_vk_to_sdl[vk_code]
+          return 0 unless sdl_scan
+          
+          pressed = false
+          if sdl_scan == -10  # Combined Shift
+            pressed = (states[0xE1] rescue false) || (states[0xE5] rescue false)
+          elsif sdl_scan == -11  # Combined Control
+            pressed = (states[0xE0] rescue false) || (states[0xE4] rescue false)
+          elsif sdl_scan == -12  # Combined Alt
+            pressed = (states[0xE2] rescue false) || (states[0xE6] rescue false)
+          else
+            pressed = states[sdl_scan] rescue false
+          end
+          
+          return pressed ? 1 : 0
+        rescue => e
+          return 0
+        end
+      end
+      
+      # Patch the call method
+      win32api_class.define_method(:call) do |*args|
+        func_lower = (@func || @function || '').to_s.downcase
+        dll_lower = (@dll || @dllname || '').to_s.downcase
+        
+        if dll_lower.include?('user32')
+          if func_lower == 'getasynckeystate'
+            vk_code = args[0].to_i rescue 0
+            result = __mkxpz_check_keystate(vk_code)
+            return result == 1 ? 0x8000 : 0
+          elsif func_lower == 'getkeystate'
+            vk_code = args[0].to_i rescue 0
+            return __mkxpz_check_keystate(vk_code)
+          end
+        end
+        
+        # Call original for other functions
+        original_call.bind(self).call(*args)
+      end
+      
+      puts "[MKXP-Z] [OK] Win32API.call patched for GetAsyncKeyState/GetKeyState (Input.raw_key_states)"
+    else
+      puts "[MKXP-Z] Win32API has no 'call' method to patch"
+    end
+  rescue => e
+    puts "[MKXP-Z] Warning: Could not patch Win32API: #{e.message}"
+  end
+else
+  puts "[MKXP-Z] Win32API class not defined, skipping patch"
+end
+)RUBY";
+                
+                int patchState;
+                rb_eval_string_protect(win32apiPatch, &patchState);
+                
+                if (patchState) {
+                    VALUE exc = rb_errinfo();
+                    if (exc != Qnil) {
+                        VALUE msg = rb_funcall(exc, rb_intern("message"), 0);
+                        fprintf(stderr, "[MKXP-Z] Win32API patch error: %s\n", StringValueCStr(msg));
+                        rb_set_errinfo(Qnil);
+                    }
+                } else {
+                    fprintf(stderr, "[MKXP-Z] Win32API postload patch applied successfully\n");
+                }
+            }
+            
+            
             evalString(string, fname, &state);
             
             if (state == 0) {
                 // Script executed successfully
                 if (i < 10 || i == scriptCount - 1 || i % 20 == 0) {
                     fprintf(stderr, "[MKXP-Z] [%03ld/%ld] ✓ Success: %s\n", i, scriptCount, scriptName);
+                }
+                
+                // ================================================================
+                // WIN32API POSTLOAD PATCH
+                // Run after Win32API script or before Main script
+                // ================================================================
+                static bool win32api_patched = false;
+                bool should_patch = false;
+                
+                // Check if we should patch
+                if (!win32api_patched) {
+                    if (strcmp(scriptName, "Win32API") == 0) {
+                        fprintf(stderr, "[MKXP-Z] Win32API script execution detected - Applying patch...\n");
+                        should_patch = true;
+                    } else if (strcmp(scriptName, "Main") == 0) {
+                        fprintf(stderr, "[MKXP-Z] Main script detected (Win32API not patched yet) - Applying patch...\n");
+                        should_patch = true;
+                    }
+                }
+                
+                if (should_patch) {
+                    const char* win32apiPatch = R"(
+# Win32API GetAsyncKeyState/GetKeyState Postload Patch
+if Object.const_defined?(:Win32API)
+  puts "[MKXP-Z] Patching Win32API for GetAsyncKeyState/GetKeyState..."
+  
+  # Windows VK to SDL Scancode mapping
+  $__mkxpz_vk_to_sdl = {
+    0x0D => 0x28,  # VK_RETURN -> SDL_SCANCODE_RETURN
+    0x1B => 0x29,  # VK_ESCAPE -> SDL_SCANCODE_ESCAPE
+    0x20 => 0x2C,  # VK_SPACE -> SDL_SCANCODE_SPACE
+    0x08 => 0x2A,  # VK_BACK -> SDL_SCANCODE_BACKSPACE
+    0x09 => 0x2B,  # VK_TAB -> SDL_SCANCODE_TAB
+    0x25 => 0x50,  # VK_LEFT -> SDL_SCANCODE_LEFT
+    0x26 => 0x52,  # VK_UP -> SDL_SCANCODE_UP
+    0x27 => 0x4F,  # VK_RIGHT -> SDL_SCANCODE_RIGHT
+    0x28 => 0x51,  # VK_DOWN -> SDL_SCANCODE_DOWN
+    0x10 => -10,   # VK_SHIFT -> combined LSHIFT/RSHIFT
+    0xA0 => 0xE1,  # VK_LSHIFT
+    0xA1 => 0xE5,  # VK_RSHIFT
+    0x11 => -11,   # VK_CONTROL -> combined LCTRL/RCTRL
+    0xA2 => 0xE0,  # VK_LCONTROL
+    0xA3 => 0xE4,  # VK_RCONTROL
+    0x12 => -12,   # VK_MENU -> combined LALT/RALT
+    0xA4 => 0xE2,  # VK_LMENU
+    0xA5 => 0xE6,  # VK_RMENU
+  }
+  
+  # Add A-Z (VK 0x41-0x5A -> SDL 0x04-0x1D)
+  (0x41..0x5A).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x41 + 0x04 }
+  # Add 0-9 (VK 0x30-0x39 -> SDL 0x27, 0x1E-0x26)
+  $__mkxpz_vk_to_sdl[0x30] = 0x27  # 0
+  (0x31..0x39).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x31 + 0x1E }
+  # Add F1-F12 (VK 0x70-0x7B -> SDL 0x3A-0x45)
+  (0x70..0x7B).each { |vk| $__mkxpz_vk_to_sdl[vk] = vk - 0x70 + 0x3A }
+  
+  begin
+    win32api_class = Object.const_get(:Win32API)
+    
+    if win32api_class.instance_methods.include?(:call)
+      original_call = win32api_class.instance_method(:call)
+      
+      define_method(:__mkxpz_check_keystate) do |vk_code|
+        begin
+          states = Input.raw_key_states rescue nil
+          return 0 unless states
+          sdl_scan = $__mkxpz_vk_to_sdl[vk_code]
+          return 0 unless sdl_scan
+          
+          pressed = false
+          if sdl_scan == -10
+            pressed = (states[0xE1] rescue false) || (states[0xE5] rescue false)
+          elsif sdl_scan == -11
+            pressed = (states[0xE0] rescue false) || (states[0xE4] rescue false)
+          elsif sdl_scan == -12
+            pressed = (states[0xE2] rescue false) || (states[0xE6] rescue false)
+          else
+            pressed = states[sdl_scan] rescue false
+          end
+          return pressed ? 1 : 0
+        rescue
+          return 0
+        end
+      end
+      
+      win32api_class.define_method(:call) do |*args|
+        func_lower = (@func || @function || '').to_s.downcase
+        dll_lower = (@dll || @dllname || '').to_s.downcase
+        
+        if dll_lower.include?('user32')
+          if func_lower == 'getasynckeystate'
+            vk_code = args[0].to_i rescue 0
+            result = __mkxpz_check_keystate(vk_code)
+            return result == 1 ? 0x8000 : 0
+          elsif func_lower == 'getkeystate'
+            vk_code = args[0].to_i rescue 0
+            return __mkxpz_check_keystate(vk_code)
+          end
+        end
+        original_call.bind(self).call(*args)
+      end
+      puts "[MKXP-Z] [OK] Win32API.call patched for GetAsyncKeyState/GetKeyState"
+    end
+  rescue => e
+    puts "[MKXP-Z] Warning: Could not patch Win32API: #{e.message}"
+  end
+end
+)";
+                    int patchState;
+                    rb_eval_string_protect(win32apiPatch, &patchState);
+                    if (!patchState) {
+                        win32api_patched = true;
+                        fprintf(stderr, "[MKXP-Z] Win32API postload patch applied successfully\n");
+                    }
                 }
                 
                 // Special logging for Main script

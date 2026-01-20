@@ -1032,6 +1032,64 @@ static std::string wrapScriptForClassVariableCompat(const std::string &script, c
     
     return wrapped;
 }
+
+// Ruby 1.8 -> 3.x compatibility: Fix "retry if condition" syntax
+// In Ruby 1.8, retry could be used inside loops (while, until, loop do).
+// In Ruby 3.x, retry is ONLY valid inside begin...rescue...end blocks.
+// This function converts "retry if condition" to "redo if condition".
+static bool needsRetrySyntaxFix(const std::string &script) {
+    // Quick check: look for "retry if" or "retry unless" patterns
+    size_t pos = script.find("retry");
+    while (pos != std::string::npos) {
+        // Check if it's followed by whitespace and then "if" or "unless"
+        size_t afterRetry = pos + 5;
+        while (afterRetry < script.length() && (script[afterRetry] == ' ' || script[afterRetry] == '\t'))
+            afterRetry++;
+        
+        if (afterRetry < script.length()) {
+            if (script.substr(afterRetry, 2) == "if" || script.substr(afterRetry, 6) == "unless") {
+                return true;
+            }
+        }
+        
+        pos = script.find("retry", pos + 1);
+    }
+    return false;
+}
+
+static std::string fixRetrySyntax(const std::string &script, const char* scriptName) {
+    std::string result = script;
+    bool modified = false;
+    
+    // Find and replace "retry if" -> "redo if" and "retry unless" -> "redo unless"
+    size_t pos = 0;
+    while ((pos = result.find("retry", pos)) != std::string::npos) {
+        // Check if it's followed by whitespace and then "if" or "unless"
+        size_t afterRetry = pos + 5;
+        size_t wsStart = afterRetry;
+        while (afterRetry < result.length() && (result[afterRetry] == ' ' || result[afterRetry] == '\t'))
+            afterRetry++;
+        
+        if (afterRetry < result.length()) {
+            bool isIf = (result.substr(afterRetry, 2) == "if" && 
+                        (afterRetry + 2 >= result.length() || !isalnum(result[afterRetry + 2])));
+            bool isUnless = (result.substr(afterRetry, 6) == "unless" && 
+                            (afterRetry + 6 >= result.length() || !isalnum(result[afterRetry + 6])));
+            
+            if (isIf || isUnless) {
+                // Replace "retry" with "redo"
+                result.replace(pos, 5, "redo");
+                modified = true;
+                Debug() << "[MKXP-Z] SYNTAX FIX: Converting 'retry " << (isIf ? "if" : "unless") 
+                        << "' to 'redo " << (isIf ? "if" : "unless") << "' in script '" << scriptName << "'";
+            }
+        }
+        
+        pos++;
+    }
+    
+    return result;
+}
 #endif
 
 bool evalScript(VALUE string, const char *filename)
@@ -1124,13 +1182,21 @@ static void runRMXPScripts(BacktraceData &btData) {
         }
         
         // Ruby 3.x compatibility: wrap scripts that use @@class_variables in toplevel singleton class
+        // Also fix "retry if" -> "redo if" for Ruby 1.8 games
 #if RAPI_MAJOR >= 3
         std::string decodedScript(decodeBuffer.c_str(), bufferLen);
+        
+        // First, fix retry syntax (Ruby 1.8 -> 3.x compatibility)
+        if (needsRetrySyntaxFix(decodedScript)) {
+            decodedScript = fixRetrySyntax(decodedScript, RSTRING_PTR(scriptName));
+        }
+        
+        // Then, check for class variable compatibility
         if (needsClassVariableCompat(decodedScript)) {
             std::string wrappedScript = wrapScriptForClassVariableCompat(decodedScript, RSTRING_PTR(scriptName));
             rb_ary_store(script, 3, rb_utf8_str_new_cstr(wrappedScript.c_str()));
         } else {
-            rb_ary_store(script, 3, rb_utf8_str_new_cstr(decodeBuffer.c_str()));
+            rb_ary_store(script, 3, rb_utf8_str_new_cstr(decodedScript.c_str()));
         }
 #else
         rb_ary_store(script, 3, rb_utf8_str_new_cstr(decodeBuffer.c_str()));
