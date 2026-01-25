@@ -2952,7 +2952,23 @@ static void mriBindingExecute() {
     if (!NIL_P(exc) && !rb_obj_is_kind_of(exc, rb_eSystemExit))
         showExc(exc, btData);
     
-    ruby_cleanup(0);
+    // CRITICAL: Do NOT call ruby_cleanup() here!
+    // In Ruby 3.x, ruby_cleanup() destroys the Ruby VM completely.
+    // Once destroyed, ruby_init() cannot be called again (causes "encoding name registered twice" error).
+    // Instead, we keep the Ruby VM alive and reuse it for subsequent game launches.
+    // This is safe because we reset all game-specific state when a new game starts.
+    // Memory usage is acceptable since Ruby VM is ~10-20MB.
+    // 
+    // Previously: ruby_cleanup(0);  // This was causing EXC_BAD_ACCESS on second game launch
+    //
+    // If you really need cleanup (rare), uncomment and set rubyInitialized = false:
+    // ruby_cleanup(0);
+    // rubyInitialized = false;
+    
+    MKXP_DEBUG_LOG("Game execution complete, keeping Ruby VM alive for potential next game");
+    
+    // Clear error info for next game session
+    rb_set_errinfo(Qnil);
     
     // Mark end of Ruby execution scope - this helps ensure stack_anchor_start stays in scope
     stack_anchor_end = 1;
