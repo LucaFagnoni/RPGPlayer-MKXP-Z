@@ -1033,6 +1033,19 @@ struct TilemapPrivate
 			return;
 		}
 
+		/* Fix for race condition: When tilemap becomes ready for the first time,
+		 * force all dirty flags to ensure proper initial render.
+		 * This fixes the issue where async bitmap loading completes after
+		 * the scene has already been drawn, resulting in black backgrounds. */
+		if (!tilemapReady)
+		{
+			atlasSizeDirty = true;
+			atlasDirty = true;
+			buffersDirty = true;
+			mapViewportDirty = true;
+			zOrderDirty = true;
+		}
+
 		if (atlasSizeDirty)
 		{
 			allocateAtlas();

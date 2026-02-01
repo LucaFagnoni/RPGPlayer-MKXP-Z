@@ -1737,6 +1737,157 @@ static std::string preprocessRuby18Syntax(const std::string& script) {
         //   during class definition and reopens the class without inheritance.
         // - This is safer because it only triggers when an actual error occurs.
         // =========================================================================
+        // =========================================================================
+        // 4. Convert "BEGIN { ... }" blocks to immediate execution
+        // =========================================================================
+        // In Ruby, BEGIN blocks are only permitted at file toplevel.
+        // When scripts are executed via eval(), BEGIN causes:
+        //   "BEGIN is permitted only at toplevel"
+        //
+        // Solution: Convert "BEGIN {" to "(proc {" so the block becomes a proc
+        // that we can call immediately. The closing "}" of BEGIN block stays as is.
+        // We add ".call" after the block by finding END blocks or doing post-processing.
+        //
+        // Simpler approach: Just replace "BEGIN {" with "(proc {" 
+        // The user's code will need the matching "})" but that might break.
+        //
+        // Even simpler and safer: Replace "BEGIN {" with empty comment and "{"
+        // Actually, let's just wrap in a method call to ensure execution:
+        // "BEGIN {" -> "(lambda {"
+        // And we'll need to handle the closing brace separately.
+        //
+        // SAFEST: Match the entire BEGIN block if we can find balanced braces.
+        // For now, let's try: "BEGIN {" -> "__mkxpz_begin_block = proc {"
+        // Then at the end of the block, it becomes: "}; __mkxpz_begin_block.call"
+        // But this requires finding the closing brace which is complex.
+        //
+        // ALTERNATIVE: Just remove "BEGIN" keyword entirely
+        // The remaining "{ ... }" will be parsed as a block/hash depending on context.
+        // In toplevel, it's a hash literal which will be evaluated and discarded.
+        // But the code inside will NOT execute!
+        //
+        // CORRECT APPROACH: Replace "BEGIN {" with "(->{"
+        // This creates a lambda, and we need to find the matching "}" and add ").call"
+        // 
+        // For simplicity, let's do a two-pass approach:
+        // 1. Replace "BEGIN {" with a unique marker "(->{ # __MKXPZ_BEGIN__"
+        // 2. After all processing, scan for the marker and its matching }, add .call
+        
+        std::regex beginPattern(
+            R"((^|\n|\r)([ \t]*)BEGIN\s*\{)",
+            std::regex::multiline
+        );
+        // Replace with: $1$2(proc { ... content ... }).call
+        // We mark the start so we can find the matching end
+        // Actually, let's just do: Replace "BEGIN {" with "(proc {"
+        // Then scan for unmatched "}" after and replace with "}).call"
+        // This is imperfect but works for simple single-block BEGIN statements
+        
+        if (std::regex_search(result, beginPattern)) {
+            // Simple strategy: Replace "BEGIN {" with "(proc {"
+            // Then we need to add ".call" after the matching "}"
+            // For now, assume BEGIN blocks are at script start and have simple structure
+            
+            // First, count BEGIN blocks
+            std::string temp = result;
+            std::smatch match;
+            int beginCount = 0;
+            while (std::regex_search(temp, match, beginPattern)) {
+                beginCount++;
+                temp = match.suffix().str();
+            }
+            
+            // Replace BEGIN with proc
+            result = std::regex_replace(result, beginPattern, "$1$2(proc {");
+            
+            // Now we need to find the matching "}" for each BEGIN and add ").call"
+            // This is the tricky part - we need to track brace depth
+            // For a robust solution, we'd need a proper parser. For now, use heuristic:
+            // Look for "}" at the same indentation level as "BEGIN" was
+            
+            // Simple heuristic for single BEGIN block at start of script:
+            // Find the first "}" that appears at start of line (or with same indent)
+            // and is not inside a string or comment
+            
+            // For now, let's try: look for "\n}" or "\r\n}" pattern following a proc block
+            // This is error-prone but may work for common cases
+            
+            // Actually, let's be smarter: Track brace depth starting from each "(proc {"
+            std::string newResult;
+            newResult.reserve(result.length() + beginCount * 10);
+            
+            size_t pos = 0;
+            int procDepth = 0;
+            bool inString = false;
+            char stringChar = 0;
+            bool inComment = false;
+            
+            while (pos < result.length()) {
+                // Track strings
+                if (!inComment && !inString && (result[pos] == '"' || result[pos] == '\'')) {
+                    inString = true;
+                    stringChar = result[pos];
+                    newResult += result[pos++];
+                    continue;
+                }
+                if (inString) {
+                    if (result[pos] == '\\' && pos + 1 < result.length()) {
+                        newResult += result[pos++];
+                        newResult += result[pos++];
+                        continue;
+                    }
+                    if (result[pos] == stringChar) {
+                        inString = false;
+                    }
+                    newResult += result[pos++];
+                    continue;
+                }
+                
+                // Track comments
+                if (!inComment && result[pos] == '#') {
+                    inComment = true;
+                    newResult += result[pos++];
+                    continue;
+                }
+                if (inComment && (result[pos] == '\n' || result[pos] == '\r')) {
+                    inComment = false;
+                    newResult += result[pos++];
+                    continue;
+                }
+                if (inComment) {
+                    newResult += result[pos++];
+                    continue;
+                }
+                
+                // Track "(proc {" - we look for "proc {" after "("
+                if (pos + 7 < result.length() && 
+                    result.substr(pos, 7) == "(proc {") {
+                    procDepth++;
+                    newResult += "(proc {";
+                    pos += 7;
+                    continue;
+                }
+                
+                // Track braces when we're inside a proc block
+                if (procDepth > 0) {
+                    if (result[pos] == '{') {
+                        procDepth++;
+                    } else if (result[pos] == '}') {
+                        procDepth--;
+                        if (procDepth == 0) {
+                            // This is the closing brace of our proc
+                            newResult += "}).call";
+                            pos++;
+                            continue;
+                        }
+                    }
+                }
+                
+                newResult += result[pos++];
+            }
+            
+            result = newResult;
+        }
         
     } catch (const std::regex_error& e) {
         // If regex fails, just return original script

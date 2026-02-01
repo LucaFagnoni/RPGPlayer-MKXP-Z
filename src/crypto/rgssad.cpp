@@ -24,8 +24,42 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <algorithm>
+#include <cctype>
 
 #include <string>
+
+/* Helper function to convert string to lowercase for case-insensitive lookup.
+ * IMPORTANT: Only converts ASCII A-Z to a-z. Non-ASCII characters (UTF-8 
+ * multibyte sequences like Japanese, Korean, Chinese, Russian etc.) are 
+ * left unchanged. This prevents corruption of non-ASCII filenames. */
+static std::string toLowercase(const char *str) {
+    std::string result(str);
+    std::transform(result.begin(), result.end(), result.begin(),
+                   [](unsigned char c) { 
+                       // Only convert ASCII uppercase A-Z (0x41-0x5A) to lowercase
+                       // Leave all other bytes unchanged (including UTF-8 multibyte sequences)
+                       if (c >= 'A' && c <= 'Z') {
+                           return (unsigned char)(c + 32);
+                       }
+                       return c;
+                   });
+    return result;
+}
+
+static std::string toLowercase(const std::string &str) {
+    std::string result(str);
+    std::transform(result.begin(), result.end(), result.begin(),
+                   [](unsigned char c) { 
+                       // Only convert ASCII uppercase A-Z (0x41-0x5A) to lowercase
+                       // Leave all other bytes unchanged (including UTF-8 multibyte sequences)
+                       if (c >= 'A' && c <= 'Z') {
+                           return (unsigned char)(c + 32);
+                       }
+                       return c;
+                   });
+    return result;
+}
 
 /* Equivalent Linear Congruential Generator (LCG) constants for iteration 2^n
  * all the way up to 2^32/4 (the largest dword offset possible in
@@ -336,7 +370,8 @@ processDirectories(RGSS_archiveData *data, BoostSet<std::string> &topLevel,
 		if (slash)
 			nameBuf[i] = '\0';
 
-		topLevel.insert(nameBuf);
+		/* Store lowercase for case-insensitive lookup */
+		topLevel.insert(toLowercase(nameBuf));
 
 		if (slash)
 			nameBuf[i] = '/';
@@ -350,8 +385,8 @@ processDirectories(RGSS_archiveData *data, BoostSet<std::string> &topLevel,
 		{
 			nameBuf[i] = '\0';
 
-			const char *dir = nameBuf;
-			const char *entry = &nameBuf[i+1];
+			std::string dir = toLowercase(nameBuf);
+			std::string entry = toLowercase(&nameBuf[i+1]);
 
 			BoostSet<std::string> &entryList = data->dirHash[dir];
 			entryList.insert(entry);
@@ -427,7 +462,9 @@ RGSS_openArchive(PHYSFS_Io *io, const char *, int forWrite, int *claimed)
 		entry.size = entrySize;
 		entry.startMagic = magic;
 
-		data->entryHash.insert(nameBuf, entry);
+		/* Store with lowercase key for case-insensitive lookup */
+		std::string lowercaseName = toLowercase(nameBuf);
+		data->entryHash.insert(lowercaseName, entry);
 		processDirectories(data, topLevel, nameBuf, nameLen);
 
 		io->seek(io, entry.offset + entry.size);
@@ -443,7 +480,8 @@ RGSS_enumerateFiles(void *opaque, const char *dirname,
 {
 	RGSS_archiveData *data = static_cast<RGSS_archiveData*>(opaque);
 
-	std::string _dirname(dirname);
+	/* Use lowercase for case-insensitive lookup */
+	std::string _dirname = toLowercase(dirname);
 
 	if (!data->dirHash.contains(_dirname))
 		return PHYSFS_ENUM_STOP;
@@ -462,11 +500,17 @@ RGSS_openRead(void *opaque, const char *filename)
 {
 	RGSS_archiveData *data = static_cast<RGSS_archiveData*>(opaque);
 
-	if (!data->entryHash.contains(filename))
+	/* Use lowercase for case-insensitive lookup */
+	std::string lowercaseName = toLowercase(filename);
+
+	if (!data->entryHash.contains(lowercaseName)) {
+		fprintf(stderr, "[RGSS] File not found in archive: '%s' (searched as '%s')\n", 
+		        filename, lowercaseName.c_str());
 		return 0;
+	}
 
 	RGSS_entryHandle *entry =
-	        new RGSS_entryHandle(data->entryHash[filename], data->archiveIo);
+	        new RGSS_entryHandle(data->entryHash[lowercaseName], data->archiveIo);
 
 	PHYSFS_Io *io = PHYSFS_ALLOC(PHYSFS_Io);
 
@@ -481,8 +525,11 @@ RGSS_stat(void *opaque, const char *filename, PHYSFS_Stat *stat)
 {
 	RGSS_archiveData *data = static_cast<RGSS_archiveData*>(opaque);
 
-	bool hasFile = data->entryHash.contains(filename);
-	bool hasDir  = data->dirHash.contains(filename);
+	/* Use lowercase for case-insensitive lookup */
+	std::string lowercaseName = toLowercase(filename);
+
+	bool hasFile = data->entryHash.contains(lowercaseName);
+	bool hasDir  = data->dirHash.contains(lowercaseName);
 
 	if (!hasFile && !hasDir)
 	{
@@ -497,7 +544,7 @@ RGSS_stat(void *opaque, const char *filename, PHYSFS_Stat *stat)
 
 	if (hasFile)
 	{
-		const RGSS_entryData &entry = data->entryHash[filename];
+		const RGSS_entryData &entry = data->entryHash[lowercaseName];
 
 		stat->filesize = entry.size;
 		stat->filetype = PHYSFS_FILETYPE_REGULAR;
@@ -644,13 +691,17 @@ RGSS3_openArchive(PHYSFS_Io *io, const char *, int forWrite, int *claimed)
 
 		nameBuf[nameLen] = '\0';
 
-		RGSS_entryData entry;
-		entry.offset = offset;
-		entry.size = size;
-		entry.startMagic = magic;
+		{
+			RGSS_entryData entry;
+			entry.offset = offset;
+			entry.size = size;
+			entry.startMagic = magic;
 
-		data->entryHash.insert(nameBuf, entry);
-		processDirectories(data, topLevel, nameBuf, nameLen);
+			/* Store with lowercase key for case-insensitive lookup */
+			std::string lowercaseName = toLowercase(nameBuf);
+			data->entryHash.insert(lowercaseName, entry);
+			processDirectories(data, topLevel, nameBuf, nameLen);
+		}
 
 		continue;
 

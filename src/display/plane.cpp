@@ -200,6 +200,11 @@ void Plane::setBitmap(Bitmap *value)
 	p->bitmapDispCon = value->wasDisposed.connect(&PlanePrivate::bitmapDisposal, p);
 
 	value->ensureNonMega();
+
+	/* Force quad recalculation when new bitmap is set.
+	 * This fixes race condition where bitmap loads async but
+	 * quad wasn't updated, resulting in black/missing parallax. */
+	p->quadSourceDirty = true;
 }
 
 void Plane::setOX(int value)

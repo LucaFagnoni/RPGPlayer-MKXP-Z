@@ -90,6 +90,7 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 	bool atlasDirty;
 	bool buffersDirty;
 	bool mapViewportDirty;
+	bool firstPrepareNeeded;
 
 	sigslot::connection mapDataCon;
 	sigslot::connection flagsCon;
@@ -130,6 +131,7 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 	      atlasDirty(true),
 	      buffersDirty(false),
 	      mapViewportDirty(false),
+	      firstPrepareNeeded(true),
 	      above(this, viewport)
 	{
 		memset(bitmaps, 0, sizeof(bitmaps));
@@ -286,6 +288,18 @@ struct TilemapVXPrivate : public ViewportElement, TileAtlasVX::Reader
 	{
 		if (!mapData)
 			return;
+
+		/* Fix for race condition: On first prepare after mapData is set,
+		 * force all dirty flags to ensure proper initial render.
+		 * This fixes the issue where async bitmap loading completes after
+		 * the scene has already been drawn, resulting in black backgrounds. */
+		if (firstPrepareNeeded && mapData)
+		{
+			atlasDirty = true;
+			buffersDirty = true;
+			mapViewportDirty = true;
+			firstPrepareNeeded = false;
+		}
 
 		if (atlasDirty)
 		{
