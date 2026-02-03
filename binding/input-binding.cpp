@@ -300,6 +300,17 @@ RB_METHOD(inputMouseInWindow) {
     return rb_bool_new(shState->input().mouseInWindow());
 }
 
+RB_METHOD(inputLiveKeyStates) {
+    RB_UNUSED_PARAM;
+    
+    VALUE ret = rb_ary_new();
+    
+    for (int i = 0; i < SDL_NUM_SCANCODES; i++)
+        rb_ary_push(ret, rb_bool_new(EventThread::keyStates[i]));
+    
+    return ret;
+}
+
 RB_METHOD(inputRawKeyStates) {
     RB_UNUSED_PARAM;
     
@@ -600,6 +611,7 @@ void inputBindingInit() {
     _rb_define_module_function(module, "mouse_in_window?", inputMouseInWindow);
     
     _rb_define_module_function(module, "raw_key_states", inputRawKeyStates);
+    _rb_define_module_function(module, "live_key_states", inputLiveKeyStates);
     
     VALUE submod = rb_define_module_under(module, "Controller");
     _rb_define_module_function(submod, "connected?", inputControllerConnected);
@@ -646,5 +658,18 @@ void inputBindingInit() {
             
             rb_const_set(module, sym, val);
         }
+    }
+}
+// =============================================================================
+// iOS Key State Access - Export the real keyStates pointer
+// =============================================================================
+// This allows the iOS app (mkxpz_ios_api.mm) to access the ACTUAL keyStates
+// array used by the Input module, avoiding static variable linkage issues
+// between different compilation units.
+extern "C" {
+    uint8_t* mkxpz_get_keystates_ptr(void) {
+        fprintf(stderr, "[MKXP-Z] 🔑 mkxpz_get_keystates_ptr called, returning: %p\n", 
+                (void*)EventThread::keyStates);
+        return EventThread::keyStates;
     }
 }
