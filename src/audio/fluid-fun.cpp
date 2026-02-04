@@ -1,17 +1,23 @@
-#include "fluid-fun.h"
+ #include "fluid-fun.h"
 
 #include <string.h>
 #include <SDL_loadso.h>
 #include <SDL_platform.h>
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 #include "debugwriter.h"
 
-#if __LINUX__ || __ANDROID__
+#if TARGET_OS_IPHONE
+// iOS: Use static linking via SHARED_FLUID - no dynamic library loading
+#ifndef SHARED_FLUID
+#define SHARED_FLUID 1
+#endif
+#define FLUID_LIB "static"
+#elif __LINUX__ || __ANDROID__
 #define FLUID_LIB "libfluidsynth.so.3"
-#elif TARGET_OS_IPHONE
-// No fluidsynth library available for iOS - MIDI playback disabled
-#define MKXPZ_NO_FLUIDSYNTH 1
-#define FLUID_LIB "dummy"
 #elif MKXPZ_BUILD_XCODE
 #define FLUID_LIB "@rpath/libfluidsynth.dylib"
 #elif __APPLE__
@@ -30,10 +36,14 @@ static void *so;
 void initFluidFunctions()
 {
 #ifdef MKXPZ_NO_FLUIDSYNTH
-	// Fluidsynth disabled for this platform (e.g., iOS)
-	Debug() << "Fluidsynth disabled for this platform. Midi playback is disabled.";
+	// Fluidsynth explicitly disabled for this platform
+	Debug() << "Fluidsynth disabled for this platform. MIDI playback is disabled.";
 	memset(&fluid, 0, sizeof(fluid));
 	return;
+#endif
+
+#if TARGET_OS_IPHONE
+	Debug() << "Initializing Fluidsynth for iOS (static linking)...";
 #endif
 
 #ifdef SHARED_FLUID

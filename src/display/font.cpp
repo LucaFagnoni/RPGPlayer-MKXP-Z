@@ -75,6 +75,17 @@ BUNDLED_FONT_DECL(liberation)
 
 static SDL_RWops *openBundledFont()
 {
+	std::string customFontPath = mkxp_fs::getPathForAsset("wqymicrohei", "ttf");
+	if (!customFontPath.empty())
+	{
+		SDL_RWops *ops = SDL_RWFromFile(customFontPath.c_str(), "rb");
+		if (ops)
+		{
+			Debug() << "Using bundled fallback font:" << customFontPath;
+			return ops;
+		}
+	}
+
 //#ifndef MKXPZ_BUILD_XCODE
     return SDL_RWFromConstMem(BNDL_F_D(BUNDLED_FONT), BNDL_F_L(BUNDLED_FONT));
 //#else

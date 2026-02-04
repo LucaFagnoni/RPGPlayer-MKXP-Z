@@ -84,6 +84,12 @@ struct SharedMidiState
 		fluid.settings_setnum(flSettings, "synth.sample-rate", SYNTH_SAMPLERATE);
 		fluid.settings_setint(flSettings, "synth.chorus.active", conf.midi.chorus);
 		fluid.settings_setint(flSettings, "synth.reverb.active", conf.midi.reverb);
+		
+		// iOS: Force GM (General MIDI) bank select mode
+		// This ignores CC0/CC32 bank select messages, forcing all channels to Bank 0
+		// Fixes "No preset found on channel X [bank=121 prog=Y]" warnings
+		// Bank 121 (Sound Effects) is not present in standard GM SoundFonts like GeneralUser-GS
+		fluid.settings_setstr(flSettings, "synth.midi-bank-select", "gm");
 
 		for (size_t i = 0; i < SYNTH_INIT_COUNT; ++i)
 			addSynth(false);

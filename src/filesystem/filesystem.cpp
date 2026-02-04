@@ -278,6 +278,36 @@ struct FileSystemPrivate {
   /* This is for compatibility with games that take Windows'
    * case insensitivity for granted */
   bool havePathCache;
+
+#ifdef __APPLE__
+  /* Persistent iconv converter for NFD -> NFC normalization.
+   * macOS filesystem uses NFD (decomposed), but pathCache uses NFC (composed).
+   * This converter is used to normalize incoming file requests to NFC. */
+  iconv_t nfd2nfcConverter;
+  
+  /* Helper method to convert a string buffer from NFD to NFC in-place */
+  void normalizeToNFC(char *inout) {
+    if (nfd2nfcConverter == (iconv_t)-1) return; // Invalid converter
+    
+    size_t srcSize = strlen(inout);
+    if (srcSize == 0) return;
+    
+    char buf[512];
+    size_t bufSize = sizeof(buf) - 1; // Reserve room for null terminator
+    char *bufPtr = buf;
+    char *inoutPtr = inout;
+    
+    size_t result = iconv(nfd2nfcConverter, &inoutPtr, &srcSize, &bufPtr, &bufSize);
+    if (result == (size_t)-1) {
+      // Conversion failed, leave string untouched
+      return;
+    }
+    
+    // Null-terminate and copy back
+    *bufPtr = '\0';
+    strcpy(inout, buf);
+  }
+#endif
 };
 
 static void throwPhysfsError(const char *desc) {
@@ -312,11 +342,27 @@ FileSystem::FileSystem(const char *argv0, bool allowSymlinks) {
   p = new FileSystemPrivate;
   p->havePathCache = false;
 
+#ifdef __APPLE__
+  /* Initialize persistent NFD -> NFC converter for macOS/iOS.
+   * utf-8-mac is macOS' NFD variant, utf-8 is standard NFC. */
+  p->nfd2nfcConverter = iconv_open("utf-8", "utf-8-mac");
+  if (p->nfd2nfcConverter == (iconv_t)-1) {
+    Debug() << "Warning: Failed to initialize NFD->NFC iconv converter";
+  }
+#endif
+
   if (allowSymlinks)
     PHYSFS_permitSymbolicLinks(1);
 }
 
 FileSystem::~FileSystem() {
+#ifdef __APPLE__
+  /* Close the persistent NFD -> NFC converter */
+  if (p->nfd2nfcConverter != (iconv_t)-1) {
+    iconv_close(p->nfd2nfcConverter);
+  }
+#endif
+
   delete p;
 
   if (PHYSFS_deinit() == 0)
@@ -356,38 +402,12 @@ struct CacheEnumData {
   FileSystemPrivate *p;
   std::stack<std::vector<std::string> *> fileLists;
 
-#ifdef __APPLE__
-  iconv_t nfd2nfc;
-  char buf[512];
-#endif
+  CacheEnumData(FileSystemPrivate *p) : p(p) {}
 
-  CacheEnumData(FileSystemPrivate *p) : p(p) {
-#ifdef __APPLE__
-    nfd2nfc = iconv_open("utf-8", "utf-8-mac");
-#endif
-  }
-
-  ~CacheEnumData() {
-#ifdef __APPLE__
-    iconv_close(nfd2nfc);
-#endif
-  }
-
-  /* Converts in-place */
+  /* Converts in-place using the persistent converter from FileSystemPrivate */
   void toNFC(char *inout) {
 #ifdef __APPLE__
-    size_t srcSize = strlen(inout);
-    size_t bufSize = sizeof(buf);
-    char *bufPtr = buf;
-    char *inoutPtr = inout;
-
-    /* Reserve room for null terminator */
-    --bufSize;
-
-    iconv(nfd2nfc, &inoutPtr, &srcSize, &bufPtr, &bufSize);
-    /* Null-terminate */
-    *bufPtr = 0;
-    strcpy(inout, buf);
+    p->normalizeToNFC(inout);
 #else
     (void)inout;
 #endif
@@ -608,6 +628,7 @@ openReadEnumCB(void *d, const char *dirpath, const char *filename) {
     data.stopSearching = true;
 
   ++data.matchCount;
+  fprintf(stderr, "[MKXP-Z] openRead Found: '%s' (requested: '%s')\n", fullPath, filename);
   return PHYSFS_ENUM_OK;
 }
 
@@ -616,6 +637,14 @@ void FileSystem::openRead(OpenHandler &handler, const char *filename) {
   char buffer[512];
   size_t len = strcpySafe(buffer, filename_nm.c_str(), sizeof(buffer), -1);
   char *delim;
+
+#ifdef __APPLE__
+  /* Convert the requested filename from NFD to NFC before lookup.
+   * This ensures incoming requests match the NFC-normalized keys in pathCache,
+   * fixing file lookup failures for Japanese filenames (e.g., Dakuten). */
+  p->normalizeToNFC(buffer);
+  len = strlen(buffer); // Update length after normalization
+#endif
 
   if (p->havePathCache)
     for (size_t i = 0; i < len; ++i)
@@ -655,8 +684,79 @@ void FileSystem::openRead(OpenHandler &handler, const char *filename) {
   if (data.physfsError)
     throw Exception(Exception::PHYSFSError, "PhysFS: %s", data.physfsError);
 
-  if (data.matchCount == 0)
+  if (data.matchCount == 0) {
+    fprintf(stderr, "[MKXP-Z] openRead Failed: '%s' -> No match found. Attempting fallback...\n", filename);
+
+    // Fallback: Global search in pathCache
+    // This handles cases where assets are in different directories than expected
+    // (e.g. customized RTPs, merged folders, or case sensitivity mixups)
+    if (p->havePathCache) {
+       std::string searchName = file; // 'file' is lowercase filename (from buffer)
+       
+       for (auto it = p->pathCache.cbegin(); it != p->pathCache.cend(); ++it) {
+           const std::string &fullPathLower = it->first;
+           
+           // Extract filename from full path
+           size_t slashPos = fullPathLower.rfind('/');
+           const char *fnamePtr = (slashPos == std::string::npos) ? fullPathLower.c_str() : fullPathLower.c_str() + slashPos + 1;
+           
+           // Check for prefix match (e.g. request 'image' matches 'path/image.png')
+           if (strncmp(fnamePtr, searchName.c_str(), searchName.length()) == 0) {
+               char nextChar = fnamePtr[searchName.length()];
+               // Ensure exact name match or valid extension separator
+               if (nextChar == '.' || nextChar == '\0') {
+                   const std::string &mixedPath = it->second;
+                   
+                   PHYSFS_File *phys = PHYSFS_openRead(mixedPath.c_str());
+                   if (phys) {
+                       // Match openReadEnumCB behavior
+                       initReadOps(phys, data.ops, false);
+                       const char *ext = findExt(mixedPath.c_str());
+                       
+                       if (data.handler.tryRead(data.ops, ext)) {
+                           fprintf(stderr, "[MKXP-Z] Global Fallback SUCCESS: Redirected '%s' -> '%s'\n", filename, mixedPath.c_str());
+                           return;
+                       }
+                       
+                       // Cleanup if tryRead failed
+                       PHYSFS_close(phys);
+                   }
+               }
+           }
+       }
+    }
+
+    // DEBUG: List contents of the directory to find potential matches
+    if (p->havePathCache) {
+       std::string dirStr(dir);
+       strTolower(dirStr); // Ensure directory key is lowercase
+       
+       if (p->fileLists.contains(dirStr)) {
+           const std::vector<std::string> &list = p->fileLists[dirStr];
+           fprintf(stderr, "[MKXP-Z] Contents of directory '%s' (%zu files):\n", dir, list.size());
+           for (const std::string &file : list) {
+               std::string fullPath = dirStr.empty() ? file : (dirStr + "/" + file);
+               std::string realName = file;
+               // Try to retrieve mixed case name from pathCache
+               if (p->pathCache.contains(fullPath)) {
+                   std::string mixed = p->pathCache[fullPath];
+                   // Extract filename from full mixed path
+                   size_t slashPos = mixed.rfind('/');
+                   if (slashPos != std::string::npos) {
+                       realName = mixed.substr(slashPos + 1);
+                   } else {
+                       realName = mixed;
+                   }
+               }
+               fprintf(stderr, "  - '%s'\n", realName.c_str());
+           }
+       } else {
+           fprintf(stderr, "[MKXP-Z] Directory '%s' not found in cache.\n", dir);
+       }
+    }
+
     throw Exception(Exception::NoFileError, "%s", filename);
+  }
 }
 
 void FileSystem::openReadRaw(SDL_RWops &ops, const char *filename,
@@ -667,8 +767,12 @@ void FileSystem::openReadRaw(SDL_RWops &ops, const char *filename,
   const char *resolvedPath = desensitize(normalizedPath.c_str());
   PHYSFS_File *handle = PHYSFS_openRead(resolvedPath);
 
-  if (!handle)
+  if (!handle) {
+    fprintf(stderr, "[MKXP-Z] openReadRaw Failed: '%s' (normalized: '%s') -> Not found\n", filename, normalizedPath.c_str());
     throw Exception(Exception::NoFileError, "%s", filename);
+  }
+
+  fprintf(stderr, "[MKXP-Z] openReadRaw Success: '%s' -> '%s' (normalized: '%s')\n", filename, resolvedPath, normalizedPath.c_str());
 
   initReadOps(handle, ops, freeOnClose);
     return;
