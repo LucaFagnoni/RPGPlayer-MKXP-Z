@@ -947,3 +947,20 @@ void SyncPoint::Util::waitForUnlock()
     
     SDL_UnlockMutex(mut);
 }
+
+// =============================================================================
+// iOS INPUT FIX: Library-internal keyStates Access
+// =============================================================================
+// iOS'ta static library (.a) ve main app farkli symbol kopyalarina sahip olabilir.
+// Bu fonksiyon, library icindeki DOGRU keyStates adresini dondurur.
+// App tarafinin mkxpz_engine_inject_key() fonksiyonu bu adresi kullanmalidir.
+// =============================================================================
+extern "C" {
+    uint8_t* mkxpz_get_library_keyStates_ptr(void) {
+        return EventThread::keyStates;
+    }
+    
+    size_t mkxpz_get_keyStates_size(void) {
+        return SDL_NUM_SCANCODES;
+    }
+}

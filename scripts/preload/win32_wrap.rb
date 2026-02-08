@@ -339,6 +339,39 @@ module Win32API_Impl
 				end
 			end
 		end
+
+		class GetForegroundWindow
+			def call(args)
+				return 42
+			end
+		end
+
+		class GetWindowThreadProcessId
+			def call(args)
+				if args[1] != 0 and args[1] != nil
+					memcpy_string(args[1], [1].pack('l'))
+				end
+				return 1
+			end
+		end
+
+		class FindWindowEx
+			def call(args)
+				if (args[1] == 0 or args[1] == nil) and args[2] == "RGSS Player"
+					return 42
+				else
+					return 0
+				end
+			end
+		end
+	end
+
+	module Kernel32
+		class GetCurrentThreadId
+			def call(args)
+				return 1
+			end
+		end
 	end
 end
 

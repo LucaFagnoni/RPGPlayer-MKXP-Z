@@ -314,12 +314,24 @@ RB_METHOD(inputLiveKeyStates) {
 RB_METHOD(inputRawKeyStates) {
     RB_UNUSED_PARAM;
     
-    VALUE ret = rb_ary_new();
-
-    uint8_t *states = shState->input().rawKeyStates();
+    // ==========================================================================
+    // iOS INPUT FIX (v2.3.x)
+    // ==========================================================================
+    // ONCEKI DAVRANIS: p->rawStates kullaniyordu - bu sadece Input.update()
+    // cagirildiginda EventThread::keyStates'den kopyalaniyordu.
+    // 
+    // SORUN: Scene_Intro gibi sahneler Input.update() cagirmadan dogrudan
+    // Win32API kullanir. Bu durumda raw_key_states hic guncellenmiyordu.
+    //
+    // COZUM: Dogrudan EventThread::keyStates'i oku - ayni live_key_states gibi.
+    // Boylece Input.update() cagirilmasa bile anlik key state'ler doner.
+    // ==========================================================================
     
-    for (unsigned int i = 0; i < shState->input().rawKeyStatesLength(); i++)
-        rb_ary_push(ret, rb_bool_new(states[i]));
+    VALUE ret = rb_ary_new();
+    
+    // Dogrudan EventThread::keyStates'i oku (Input.update gerekmez)
+    for (int i = 0; i < SDL_NUM_SCANCODES; i++)
+        rb_ary_push(ret, rb_bool_new(EventThread::keyStates[i]));
     
     return ret;
 }
