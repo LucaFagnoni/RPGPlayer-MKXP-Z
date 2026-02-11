@@ -979,6 +979,29 @@ static void mriBindingInit() {
         rb_errinfo();
     }
     
+    // =============================================================================
+    // NIL COMPARISON FIX (Added 2026-02-11)
+    // Many older RPG Maker scripts (like ISPDS) have bugs where they compare nil with numbers.
+    // E.g. "if variable < 0.0" where variable is nil crashes with ArgumentError.
+    // This patch makes nil comparable with numbers, treating nil as 0, preventing crashes.
+    // =============================================================================
+    rb_eval_string_protect(
+        "class NilClass\n"
+        "  include Comparable\n"
+        "  def <=>(other)\n"
+        "    return 0 <=> other if other.is_a?(Numeric)\n"
+        "    nil\n"
+        "  end\n"
+        "end\n",
+        &state);
+    
+    if (state == 0) {
+        Debug() << "NilClass comparison fix installed successfully";
+    } else {
+        Debug() << "Warning: Could not install NilClass comparison fix";
+        rb_errinfo();
+    }
+
     // Set $stdout and its ilk accordingly on Windows
     // I regret teaching you that word
 #ifdef __WIN32__
