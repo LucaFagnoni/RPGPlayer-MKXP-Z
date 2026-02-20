@@ -1799,8 +1799,12 @@ static std::string preprocessRuby18Syntax(const std::string& script) {
         // 
         // This fixes "SystemStackError: stack level too deep" in games like Pokemon Anil
         // where plugins like "[Advanced Items - Field Moves]" create alias chains.
+        // NOTE: We also check private_method_defined? because methods like "initialize"
+        // are private in Ruby. method_defined? only checks public/protected methods,
+        // so without this, private aliases (e.g. alias old_init initialize) would be
+        // re-created on duplicate loads, causing infinite recursion.
         result = std::regex_replace(result, aliasPattern, 
-            "$1alias_method :$4, :$6 unless method_defined?(:$4) rescue nil$7");
+            "$1alias_method :$4, :$6 unless (method_defined?(:$4) || private_method_defined?(:$4)) rescue nil$7");
         
         // =========================================================================
         // 3. Handle superclass mismatch for class definitions (DISABLED)
