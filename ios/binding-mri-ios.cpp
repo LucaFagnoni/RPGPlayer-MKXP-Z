@@ -2421,6 +2421,18 @@ static std::string fixSpecificScriptErrors(const std::string &script, const char
     std::string result = script;
     std::string sName = scriptName;
 
+    // Universal Script Fix: "unexpected write target" / "Can't assign to true" syntax errors
+    // Uses \b (word boundary) to avoid consuming preceding characters, fixing nested method calls.
+    try {
+        std::regex pattern(R"(\b([a-zA-Z_]\w*[?!]?)[ \t]+\()");
+        if (std::regex_search(result, pattern)) {
+            result = std::regex_replace(result, pattern, "$1(");
+            Debug() << "[MKXP-Z] SYNTAX FIX: Removed space before argument parenthesis in script '" << scriptName << "'";
+        }
+    } catch (const std::regex_error& e) {
+        Debug() << "[MKXP-Z] Universal space fix regex error: " << e.what();
+    }
+
     // Pokemon HGSS / Cable Club Fix: "else without rescue is useless" syntax error
     // In Ruby 1.8, 'else' was sometimes used inside 'begin' blocks without 'rescue'
     // Ruby 3.x/Prism rejects this. We safely remove the useless 'else' keyword.
@@ -2472,8 +2484,7 @@ static std::string fixSpecificScriptErrors(const std::string &script, const char
     }
 
     // Pokemon Daybreak Fix: "unexpected '('; expected a `,` separator for the array elements"
-    // In Ruby 1.8, 'EnumOption.new (...)' was acceptable. Ruby 3.x/Prism strict syntax requires
-    // no space between the method name and the parenthesis to parse correctly as arguments.
+    // (This is now handled by the generic fix above, but kept as a fallback for specific whitespace patterns if any)
     if (sName.find("PScreen_Options") != std::string::npos) {
         try {
             // Match: ".new (" with variable amount of spaces and change to ".new("
