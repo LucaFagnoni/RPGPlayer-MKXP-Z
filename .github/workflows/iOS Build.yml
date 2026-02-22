@@ -1,5 +1,5 @@
 # I have no idea what I'm doing
-name: Automatic Build
+name: iOS Build
 
 on:
   workflow_dispatch:
@@ -39,17 +39,22 @@ jobs:
       - name: Generate xxd Headers
         run: |
           # The macOS xcodebuild does not run the meson/cmake xxd targets, so we do it manually.
-          for f in shader/*.frag shader/*.vert shader/common.h; do xxd -i "$f" > "${f}.xxd"; done
-          xxd -i assets/icon.png > assets/icon.png.xxd
-          xxd -i assets/gamecontrollerdb.txt > assets/gamecontrollerdb.txt.xxd
-          xxd -i assets/liberation.ttf > assets/liberation.ttf.xxd
-          if [ -f assets/wqymicrohei.ttf ]; then xxd -i assets/wqymicrohei.ttf > assets/wqymicrohei.ttf.xxd; fi
+          # We must run this from a sibling directory so xxd creates variables starting with exactly 3 underscores (e.g. `___assets_liberation_ttf`)
+          cd macos
+          for f in ../shader/*.frag ../shader/*.vert ../shader/common.h; do xxd -i "$f" > "$(basename $f).xxd"; done
+          xxd -i ../assets/icon.png > icon.png.xxd
+          xxd -i ../assets/gamecontrollerdb.txt > gamecontrollerdb.txt.xxd
+          xxd -i ../assets/liberation.ttf > liberation.ttf.xxd
+          if [ -f ../assets/wqymicrohei.ttf ]; then xxd -i ../assets/wqymicrohei.ttf > wqymicrohei.ttf.xxd; fi
+
           # Copy to src dirs where #include looks for them based on original meson.build structure
-          cp shader/*.xxd src/display/gl/
-          cp assets/icon.png.xxd src/
-          cp assets/gamecontrollerdb.txt.xxd src/
-          cp assets/liberation.ttf.xxd src/display/
-          if [ -f assets/wqymicrohei.ttf.xxd ]; then cp assets/wqymicrohei.ttf.xxd src/display/; fi
+          cp *.frag.xxd ../src/display/gl/
+          cp *.vert.xxd ../src/display/gl/
+          cp common.h.xxd ../src/display/gl/
+          cp icon.png.xxd ../src/
+          cp gamecontrollerdb.txt.xxd ../src/
+          cp liberation.ttf.xxd ../src/display/
+          if [ -f wqymicrohei.ttf.xxd ]; then cp wqymicrohei.ttf.xxd ../src/display/; fi
 
       - name: Build app
         run: |
