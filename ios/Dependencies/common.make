@@ -42,7 +42,7 @@ CONFIGURE_ARGS := \
 	--host=$(HOST)
 
 CMAKE_ARGS := \
-	-DCMAKE_TOOLCHAIN_FILE=../../../../deps/ios_toolchain.cmake \
+	-DCMAKE_TOOLCHAIN_FILE=$(PWD)/../../deps/ios_toolchain.cmake \
 	-DCMAKE_INSTALL_PREFIX="$(BUILD_PREFIX)" \
 	-DCMAKE_INSTALL_LIBDIR="$(LIBDIR)" \
 	-DCMAKE_PREFIX_PATH="$(BUILD_PREFIX)" \
