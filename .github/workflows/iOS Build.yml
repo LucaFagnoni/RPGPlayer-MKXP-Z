@@ -14,31 +14,43 @@ jobs:
         with:
           length: 7
 
-      - name: Remove pre-existing homebrew packages
-        run: brew remove --force $(brew list)
-
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Configure CMake
-        run: |
-          cd ios
-          mkdir build
-          cd build
-          cmake -DCMAKE_TOOLCHAIN_FILE=../../deps/ios_toolchain.cmake -G Xcode ..
+      - uses: actions/cache@v4
+        with:
+          path: |
+            macos/Dependencies/build-macosx-x86_64
+            macos/Dependencies/build-macosx-arm64
+            macos/Dependencies/build-macosx-universal
+            macos/Dependencies/downloads
+          key: mac-${{ hashFiles('macos/Dependencies/*.make', 'macos/Dependencies/*.sh') }}
 
-      - name: Build Library
+      - name: Install Homebrew tools
         run: |
-          cd ios/build
-          cmake --build . --config Release
+          cd macos/Dependencies
+          brew bundle
 
-      - name: Install Library
+      - name: Build all dependencies
         run: |
-          cd ios/build
-          cmake --install . --config Release --prefix "$GITHUB_WORKSPACE/build/artifact"
+          cd macos/Dependencies
+          ./setup.sh
+
+      - name: Build app
+        run: |
+          cd macos
+          xcodebuild -project mkxp-z.xcodeproj -configuration "Release" -scheme "Universal" -derivedDataPath "$GITHUB_WORKSPACE/build"
+
+      - name: Package IPA
+        run: |
+          cd build/Build/Products/Release
+          cp ../../../../assets/LICENSE.mkxp-z-with-https.txt ./Z-universal.app/
+          mkdir Payload
+          cp -R Z-universal.app Payload/mkxp-z.app
+          zip -r mkxp-z.ipa Payload
 
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
           name: mkxp-z.ios.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
-          path: build/artifact
+          path: build/Build/Products/Release/mkxp-z.ipa
