@@ -36,6 +36,21 @@ jobs:
           cd macos/Dependencies
           ./setup.sh
 
+      - name: Generate xxd Headers
+        run: |
+          # The macOS xcodebuild does not run the meson/cmake xxd targets, so we do it manually.
+          for f in shader/*.frag shader/*.vert shader/common.h; do xxd -i "$f" > "${f}.xxd"; done
+          xxd -i assets/icon.png > assets/icon.png.xxd
+          xxd -i assets/gamecontrollerdb.txt > assets/gamecontrollerdb.txt.xxd
+          xxd -i assets/liberation.ttf > assets/liberation.ttf.xxd
+          if [ -f assets/wqymicrohei.ttf ]; then xxd -i assets/wqymicrohei.ttf > assets/wqymicrohei.ttf.xxd; fi
+          # Copy to src dirs where #include looks for them based on original meson.build structure
+          cp shader/*.xxd src/display/gl/
+          cp assets/icon.png.xxd src/
+          cp assets/gamecontrollerdb.txt.xxd src/
+          cp assets/liberation.ttf.xxd src/display/
+          if [ -f assets/wqymicrohei.ttf.xxd ]; then cp assets/wqymicrohei.ttf.xxd src/display/; fi
+
       - name: Build app
         run: |
           cd macos
