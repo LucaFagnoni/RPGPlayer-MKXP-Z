@@ -220,7 +220,8 @@ $(DOWNLOADS)/sdl2_image/cmakebuild/Makefile: $(DOWNLOADS)/sdl2_image/CMakeLists.
 	-DSDL2IMAGE_JXL=yes \
 	-DSDL2IMAGE_JXL_SHARED=no \
 	-DSDL2IMAGE_BACKEND_IMAGEIO=no \
-	-DSDL2IMAGE_VENDORED=yes
+	-DSDL2IMAGE_VENDORED=yes \
+	-DJPEGXL_ENABLE_TOOLS=OFF
 	
 
 $(DOWNLOADS)/sdl2_image/CMakeLists.txt:
