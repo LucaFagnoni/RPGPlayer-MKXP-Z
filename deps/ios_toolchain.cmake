@@ -15,6 +15,9 @@ set(CMAKE_OSX_ARCHITECTURES arm64)
 # Deployment target
 set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0")
 
+# Use any root paths passed in by the user (like our local dependency prefix)
+list(APPEND CMAKE_FIND_ROOT_PATH ${CMAKE_PREFIX_PATH})
+
 # Set standard behavior for find_program/find_library
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
