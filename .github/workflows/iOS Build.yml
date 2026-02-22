@@ -20,15 +20,13 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: |
-            macos/Dependencies/build-macosx-x86_64
-            macos/Dependencies/build-macosx-arm64
-            macos/Dependencies/build-macosx-universal
-            macos/Dependencies/downloads
-          key: mac-${{ hashFiles('macos/Dependencies/*.make', 'macos/Dependencies/*.sh') }}
+            deps/ios_dist
+            ios/Dependencies/downloads
+          key: ios-${{ hashFiles('ios/Dependencies/*.make', 'ios/Dependencies/*.sh') }}
 
       - name: Install Homebrew tools
         run: |
-          cd macos/Dependencies
+          cd ios/Dependencies
           brew bundle
 
       - name: Build all dependencies
@@ -38,9 +36,8 @@ jobs:
 
       - name: Generate xxd Headers
         run: |
-          # The macOS xcodebuild does not run the meson/cmake xxd targets, so we do it manually.
           # We must run this from a sibling directory so xxd creates variables starting with exactly 3 underscores (e.g. `___assets_liberation_ttf`)
-          cd macos
+          cd ios
           for f in ../shader/*.frag ../shader/*.vert ../shader/common.h; do xxd -i "$f" > "$(basename $f).xxd"; done
           xxd -i ../assets/icon.png > icon.png.xxd
           xxd -i ../assets/gamecontrollerdb.txt > gamecontrollerdb.txt.xxd
