@@ -3,7 +3,7 @@ SYSROOT := $(shell xcrun -sdk iphoneos --show-sdk-path)
 TARGETFLAGS := $(TARGETFLAGS) -miphoneos-version-min=$(MINIMUM_REQUIRED) -isysroot $(SYSROOT)
 DEPLOYMENT_TARGET_ENV := IPHONEOS_DEPLOYMENT_TARGET=$(MINIMUM_REQUIRED)
 BUILD_PREFIX := $(PWD)/../../deps/ios_dist
-LIBDIR := $(BUILD_PREFIX)/lib/device
+LIBDIR := $(BUILD_PREFIX)/lib
 INCLUDEDIR := $(BUILD_PREFIX)/include
 DOWNLOADS := $(PWD)/downloads/$(HOST)
 NPROC := $(shell sysctl -n hw.ncpu)

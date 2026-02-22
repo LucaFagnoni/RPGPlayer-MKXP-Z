@@ -196,56 +196,25 @@ set(MKXPZ_SOURCES
 # Libraries
 # ====================
 
-# Find all xcframeworks
-set(XCFW_DIR "${DEPS_DIR}/xcframeworks")
+set(LIB_DIR "${DEPS_DIR}/lib")
 
-# Helper function to get library path from xcframework
-function(get_xcfw_lib_path XCFW_NAME OUT_VAR)
-    set(XCFW_PATH "${XCFW_DIR}/${XCFW_NAME}.xcframework")
-    if(IOS_PLATFORM STREQUAL "SIMULATOR")
-        # Try different simulator folder naming conventions
-        foreach(SUBFOLDER "ios-arm64-simulator" "ios-arm64_x86_64-simulator" "ios-x86_64-simulator")
-            if(EXISTS "${XCFW_PATH}/${SUBFOLDER}")
-                file(GLOB LIB_FILE "${XCFW_PATH}/${SUBFOLDER}/*.a")
-                if(LIB_FILE)
-                    set(${OUT_VAR} ${LIB_FILE} PARENT_SCOPE)
-                    return()
-                endif()
-            endif()
-        endforeach()
-    else()
-        # Device
-        foreach(SUBFOLDER "ios-arm64" "ios-arm64-iphoneos")
-            if(EXISTS "${XCFW_PATH}/${SUBFOLDER}")
-                file(GLOB LIB_FILE "${XCFW_PATH}/${SUBFOLDER}/*.a")
-                if(LIB_FILE)
-                    set(${OUT_VAR} ${LIB_FILE} PARENT_SCOPE)
-                    return()
-                endif()
-            endif()
-        endforeach()
-    endif()
-    set(${OUT_VAR} "NOTFOUND" PARENT_SCOPE)
-endfunction()
-
-# Get library paths from xcframeworks
-get_xcfw_lib_path("SDL2" SDL2_LIB)
-get_xcfw_lib_path("SDL2_image" SDL2_IMAGE_LIB)
-get_xcfw_lib_path("SDL2_ttf" SDL2_TTF_LIB)
-get_xcfw_lib_path("SDL2_sound" SDL2_SOUND_LIB)
-get_xcfw_lib_path("ogg" OGG_LIB)
-get_xcfw_lib_path("vorbis" VORBIS_LIB)
-get_xcfw_lib_path("vorbisfile" VORBISFILE_LIB)
-get_xcfw_lib_path("theora" THEORA_LIB)
-get_xcfw_lib_path("theoradec" THEORADEC_LIB)
-get_xcfw_lib_path("openal" OPENAL_LIB)
-get_xcfw_lib_path("physfs" PHYSFS_LIB)
-get_xcfw_lib_path("pixman" PIXMAN_LIB)
-get_xcfw_lib_path("sigc" SIGC_LIB)
-get_xcfw_lib_path("uchardet" UCHARDET_LIB)
+# Direct links to the custom cross-compiled static iOS libraries
+set(SDL2_LIB "${LIB_DIR}/libSDL2.a")
+set(SDL2_IMAGE_LIB "${LIB_DIR}/libSDL2_image.a")
+set(SDL2_TTF_LIB "${LIB_DIR}/libSDL2_ttf.a")
+set(SDL2_SOUND_LIB "${LIB_DIR}/libSDL2_sound.a")
+set(OGG_LIB "${LIB_DIR}/libogg.a")
+set(VORBIS_LIB "${LIB_DIR}/libvorbis.a")
+set(VORBISFILE_LIB "${LIB_DIR}/libvorbisfile.a")
+set(THEORA_LIB "${LIB_DIR}/libtheora.a")
+set(THEORADEC_LIB "${LIB_DIR}/libtheoradec.a")
+set(OPENAL_LIB "${LIB_DIR}/libopenal.a")
+set(PHYSFS_LIB "${LIB_DIR}/libphysfs.a")
+set(PIXMAN_LIB "${LIB_DIR}/libpixman-1.a")
+set(UCHARDET_LIB "${LIB_DIR}/libuchardet.a")
 
 # Ruby
-set(RUBY_LIB "${RUBY_LIB_DIR}/libruby.a")
+set(RUBY_LIB "${LIB_DIR}/libruby.a")
 
 # ====================
 # Static Library Target
