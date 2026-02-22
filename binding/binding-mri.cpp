@@ -1348,6 +1348,8 @@ static void showExc(VALUE exc, const BacktraceData &btData) {
     showMsg(ms);
 }
 
+extern "C" __attribute__((weak)) void Init_ext(void) {}
+
 static void mriBindingExecute() {
     Config &conf = shState->rtData().config;
     
@@ -1363,9 +1365,7 @@ static void mriBindingExecute() {
     ruby_init();
     
     // Initialize statically linked Ruby extensions (including zlib)
-    extern void Init_ext(void) __attribute__((weak_import));
-    if (Init_ext)
-        Init_ext();
+    Init_ext();
     
     std::vector<const char*> rubyArgsC{"mkxp-z"};
     rubyArgsC.push_back("-e ");

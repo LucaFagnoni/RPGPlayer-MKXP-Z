@@ -122,7 +122,16 @@ static SDL_GLContext initGL(SDL_Window *win, Config &conf,
                             RGSSThreadData *threadData);
 
 int g_mkxpz_log_level = 0;
-extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak_import));
+
+extern "C" {
+    __attribute__((weak)) unsigned int mkxpz_get_sdl_framebuffer() {
+        return 0;
+    }
+    __attribute__((weak)) void mkxpz_get_ios_screen_size(int *w, int *h) {
+        if (w) *w = -1;
+        if (h) *h = -1;
+    }
+}
 
 int rgssThreadFun(void *userdata) {
   MKXP_DEBUG_LOG("DEBUG: rgssThreadFun started");
@@ -169,22 +178,22 @@ int rgssThreadFun(void *userdata) {
   // GL_FRAMEBUFFER_BINDING returns 0 here because SDL doesn't bind its FBO until swap
   // We use mkxpz_get_sdl_framebuffer() which accesses SDL's viewFramebuffer ivar via ObjC runtime
   // This function is defined in mkxpz_ios_api.mm (app side) and linked at runtime
-  {
-    // Try to get SDL's framebuffer from ObjC runtime first
-    // extern "C" moved to global scope
-    GLint defaultFBO = 0;
-    
-    if (mkxpz_get_sdl_framebuffer) {
+    {
+      // Try to get SDL's framebuffer from ObjC runtime first
+      // extern "C" moved to global scope
+      GLint defaultFBO = 0;
+      
       defaultFBO = (GLint)mkxpz_get_sdl_framebuffer();
-      fprintf(stderr, "[MKXP-Z] iOS: Got SDL framebuffer from ObjC runtime = %d\n", defaultFBO);
-    } else {
-      // Fallback to GL query (will likely return 0)
-      gl.GetIntegerv(GL_FRAMEBUFFER_BINDING, &defaultFBO);
-      fprintf(stderr, "[MKXP-Z] iOS: Fallback GL_FRAMEBUFFER_BINDING = %d\n", defaultFBO);
+      if (defaultFBO != 0) {
+        fprintf(stderr, "[MKXP-Z] iOS: Got SDL framebuffer from ObjC runtime = %d\n", defaultFBO);
+      } else {
+        // Fallback to GL query (will likely return 0)
+        gl.GetIntegerv(GL_FRAMEBUFFER_BINDING, &defaultFBO);
+        fprintf(stderr, "[MKXP-Z] iOS: Fallback GL_FRAMEBUFFER_BINDING = %d\n", defaultFBO);
+      }
+      
+      FBO::iosDefaultFramebuffer = FBO::ID(defaultFBO);
     }
-    
-    FBO::iosDefaultFramebuffer = FBO::ID(defaultFBO);
-  }
 #endif
 
   /* Setup AL context */

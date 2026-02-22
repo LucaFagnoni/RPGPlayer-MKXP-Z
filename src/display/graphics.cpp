@@ -970,9 +970,8 @@ struct GraphicsPrivate {
             /* iOS FIX: Use mkxpz_get_ios_screen_size() to get drawable size directly
              * instead of polling drawableSizeMsg, which can have race conditions
              * and return window size (667) instead of drawable size (1334) */
-            int drW = 0, drH = 0;
-            if (mkxpz_get_ios_screen_size)
-                mkxpz_get_ios_screen_size(&drW, &drH);
+            int drW = -1, drH = -1;
+            mkxpz_get_ios_screen_size(&drW, &drH);
             
             Vec2i drawableSize = (drW > 0 && drH > 0) ? Vec2i(drW, drH) : winSize;
             
@@ -1113,10 +1112,9 @@ struct GraphicsPrivate {
         int scaleIsSpecial = GLMeta::blitScaleIsSpecial(integerScaleBuffer, false, IntRect(0, 0, scSize.x, scSize.y), integerScaleActive ? integerScaleBuffer : screen.getPP().frontBuffer(), IntRect(0, 0, sourceSize.x, sourceSize.y));
 
         // iOS FIX: Ensure correct physical viewport size & Reset Scissor
-        int drW = 0, drH = 0;
+        int drW = -1, drH = -1;
         // SDL_GL_GetDrawableSize crashes on background thread in iOS! Use helper.
-        if (mkxpz_get_ios_screen_size)
-            mkxpz_get_ios_screen_size(&drW, &drH);
+        mkxpz_get_ios_screen_size(&drW, &drH);
         Vec2i blitSize = (drW > 0 && drH > 0) ? Vec2i(drW, drH) : winSize;
         
         gl.Disable(GL_SCISSOR_TEST);
