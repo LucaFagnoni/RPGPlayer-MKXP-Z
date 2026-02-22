@@ -133,7 +133,7 @@ $(LIBDIR)/libuchardet.a: $(DOWNLOADS)/uchardet/cmakebuild/Makefile
 $(DOWNLOADS)/uchardet/cmakebuild/Makefile: $(DOWNLOADS)/uchardet/CMakeLists.txt
 	cd $(DOWNLOADS)/uchardet; \
 	mkdir cmakebuild; cd cmakebuild; \
-	$(CMAKE) -DBUILD_SHARED_LIBS=no
+	$(CMAKE) -DBUILD_SHARED_LIBS=no -DBUILD_BINARY=no
 
 $(DOWNLOADS)/uchardet/CMakeLists.txt:
 	$(CLONE) https://gitlab.freedesktop.org/uchardet/uchardet -b v0.0.8 $(DOWNLOADS)/uchardet
