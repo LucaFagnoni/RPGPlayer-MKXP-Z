@@ -34,7 +34,7 @@ CONFIGURE_ENV := \
 	$(DEPLOYMENT_TARGET_ENV) \
 	CMAKE_POLICY_VERSION_MINIMUM=3.10 \
 	PKG_CONFIG_LIBDIR=$(PKG_CONFIG_LIBDIR) \
-	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS)" CPPFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)"
 
 CONFIGURE_ARGS := \
 	--prefix="$(BUILD_PREFIX)" \
@@ -177,7 +177,7 @@ libpng: init_dirs $(LIBDIR)/libpng.a
 
 $(LIBDIR)/libpng.a: $(DOWNLOADS)/libpng/Makefile
 	cd $(DOWNLOADS)/libpng; \
-	make -j$(NPROC); make install
+	make CPPFLAGS="$(CFLAGS)" -j$(NPROC); make install
 
 $(DOWNLOADS)/libpng/Makefile: $(DOWNLOADS)/libpng/configure
 	cd $(DOWNLOADS)/libpng; \
