@@ -1,0 +1,12 @@
+ARCH := arm64
+HOST := aarch64-apple-darwin
+MINIMUM_REQUIRED := 14.0
+
+SDL_FLAGS := ${SDL_FLAGS} --host=arm-apple-darwin
+SDL2_IMAGE_FLAGS := ${SDL2_IMAGE_FLAGS}
+SDL2_TTF_FLAGS := ${SDL2_TTF_FLAGS}
+OPENAL_FLAGS := -DALSOFT_CPUEXT_NEON=yes ${OPENAL_FLAGS}
+OPENSSL_FLAGS := ios64-cross
+RUBY_FLAGS := ${RUBY_FLAGS}
+
+include common.make

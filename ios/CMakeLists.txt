@@ -251,8 +251,8 @@ set(RUBY_LIB "${RUBY_LIB_DIR}/libruby.a")
 # Static Library Target
 # ====================
 
-# Build MKXP-Z as a static library for embedding in an iOS app
-add_library(mkxpz STATIC ${MKXPZ_SOURCES})
+# Build MKXP-Z as a native iOS application
+add_executable(mkxpz MACOSX_BUNDLE ${MKXPZ_SOURCES})
 
 target_compile_options(mkxpz PRIVATE
     -Wno-non-virtual-dtor
@@ -306,7 +306,7 @@ target_link_libraries(mkxpz
 # ====================
 
 install(TARGETS mkxpz
-    ARCHIVE DESTINATION lib
+    BUNDLE DESTINATION .
 )
 
 # Install headers for app integration

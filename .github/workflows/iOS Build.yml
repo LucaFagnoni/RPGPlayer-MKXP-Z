@@ -33,8 +33,8 @@ jobs:
 
       - name: Build all dependencies
         run: |
-          cd macos/Dependencies
-          ./setup.sh
+          cd ios/Dependencies
+          bash ./build.sh
 
       - name: Generate xxd Headers
         run: |
@@ -58,19 +58,21 @@ jobs:
 
       - name: Build app
         run: |
-          cd macos
-          xcodebuild -project mkxp-z.xcodeproj -configuration "Release" -scheme "Universal" -derivedDataPath "$GITHUB_WORKSPACE/build" ARCHS="arm64" ONLY_ACTIVE_ARCH=NO
+          mkdir build && cd build
+          cmake -DCMAKE_TOOLCHAIN_FILE=../deps/ios_toolchain.cmake -G Xcode ../ios
+          cmake --build . --config Release
 
       - name: Package IPA
         run: |
-          cd build/Build/Products/Release
-          cp ../../../../assets/LICENSE.mkxp-z-with-https.txt ./Z-universal.app/
+          cd build
+          APP_DIR=$(find . -name "mkxpz.app" -type d | head -n 1)
+          cp ../assets/LICENSE.mkxp-z-with-https.txt "$APP_DIR/"
           mkdir Payload
-          cp -R Z-universal.app Payload/mkxp-z.app
+          cp -R "$APP_DIR" Payload/mkxp-z.app
           zip -r mkxp-z.ipa Payload
 
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
           name: mkxp-z.ios.${{github.event_name == 'pull_request' && format('PR{0}', github.event.number) || github.ref_name}}-${{steps.short-sha.outputs.sha}}
-          path: build/Build/Products/Release/mkxp-z.ipa
+          path: build/mkxp-z.ipa
