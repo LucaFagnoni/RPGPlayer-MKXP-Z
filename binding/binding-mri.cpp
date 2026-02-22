@@ -1363,7 +1363,7 @@ static void mriBindingExecute() {
     ruby_init();
     
     // Initialize statically linked Ruby extensions (including zlib)
-    extern void Init_ext(void) __attribute__((weak));
+    extern void Init_ext(void) __attribute__((weak_import));
     if (Init_ext)
         Init_ext();
     

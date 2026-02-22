@@ -59,7 +59,7 @@ jobs:
       - name: Build app
         run: |
           cd macos
-          xcodebuild -project mkxp-z.xcodeproj -configuration "Release" -scheme "Universal" -derivedDataPath "$GITHUB_WORKSPACE/build"
+          xcodebuild -project mkxp-z.xcodeproj -configuration "Release" -scheme "Universal" -derivedDataPath "$GITHUB_WORKSPACE/build" ARCHS="arm64" ONLY_ACTIVE_ARCH=NO
 
       - name: Package IPA
         run: |

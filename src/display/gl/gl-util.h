@@ -28,8 +28,8 @@
 #include "config.h"
 
 // iOS Support
-extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak));
-extern "C" void mkxpz_get_ios_screen_size(int *w, int *h) __attribute__((weak));
+extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak_import));
+extern "C" void mkxpz_get_ios_screen_size(int *w, int *h) __attribute__((weak_import));
 
 /* Struct wrapping GLuint for some light type safety */
 #define DEF_GL_ID \

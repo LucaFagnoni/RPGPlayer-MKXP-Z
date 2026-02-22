@@ -122,7 +122,7 @@ static SDL_GLContext initGL(SDL_Window *win, Config &conf,
                             RGSSThreadData *threadData);
 
 int g_mkxpz_log_level = 0;
-extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak));
+extern "C" unsigned int mkxpz_get_sdl_framebuffer() __attribute__((weak_import));
 
 int rgssThreadFun(void *userdata) {
   MKXP_DEBUG_LOG("DEBUG: rgssThreadFun started");
