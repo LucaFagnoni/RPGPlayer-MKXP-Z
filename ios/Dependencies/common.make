@@ -68,6 +68,7 @@ RUBY_CONFIGURE_ARGS := \
 	ac_cv_header_sys_vnode_h=no \
 	ac_cv_func_getattrlist=no \
 	ac_cv_func_fgetattrlist=no \
+	EXTDLDFLAGS="" \
 	${EXTRA_RUBY_CONFIG_ARGS}
 
 CONFIGURE := $(CONFIGURE_ENV) ./configure $(CONFIGURE_ARGS)
