@@ -58,6 +58,8 @@ RUBY_CONFIGURE_ARGS := \
 	--enable-install-static-library \
 	--disable-shared \
 	--with-out-ext=fiddle,gdbm,win32ole,win32,pty,readline,syslog \
+	--with-ext="zlib,openssl,socket,objspace,stringio,date,etc" \
+	--with-zlib-dir="$(SYSROOT)/usr" \
 	--with-static-linked-ext \
 	--disable-rubygems \
 	--disable-install-doc \
@@ -222,8 +224,7 @@ $(DOWNLOADS)/sdl2_image/cmakebuild/Makefile: $(DOWNLOADS)/sdl2_image/CMakeLists.
 	-DSDL2IMAGE_PNG_SAVE=yes \
 	-DSDL2IMAGE_PNG_SHARED=no \
 	-DSDL2IMAGE_JPG_SHARED=no \
-	-DSDL2IMAGE_JXL=yes \
-	-DSDL2IMAGE_JXL_SHARED=no \
+	-DSDL2IMAGE_JXL=no \
 	-DSDL2IMAGE_BACKEND_IMAGEIO=no \
 	-DSDL2IMAGE_VENDORED=yes \
 	-DJPEGXL_ENABLE_TOOLS=OFF \

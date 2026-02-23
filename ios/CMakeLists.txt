@@ -213,6 +213,7 @@ set(THEORADEC_LIB "${LIB_DIR}/libtheoradec.a")
 set(OPENAL_LIB "${LIB_DIR}/libopenal.a")
 set(PHYSFS_LIB "${LIB_DIR}/libphysfs.a")
 set(PIXMAN_LIB "${LIB_DIR}/libpixman-1.a")
+set(FREETYPE_LIB "${LIB_DIR}/libfreetype.a")
 set(UCHARDET_LIB "${LIB_DIR}/libuchardet.a")
 
 # Ruby (Autoconf spits out different names dynamically like libruby-static.a or libruby.3.1-static.a, so we GLOB it)
@@ -268,6 +269,7 @@ target_link_libraries(mkxpz
     ${THEORA_LIB}
     ${THEORADEC_LIB}
     ${SIGC_LIB}
+    ${FREETYPE_LIB}
     ${UCHARDET_LIB}
     ${RUBY_LIB}
     # iOS System Frameworks
