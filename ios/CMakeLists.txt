@@ -200,6 +200,7 @@ set(MKXPZ_SOURCES
 set(LIB_DIR "${DEPS_DIR}/lib")
 
 # Direct links to the custom cross-compiled static iOS libraries
+set(SDL2_MAIN_LIB "${LIB_DIR}/libSDL2main.a")
 set(SDL2_LIB "${LIB_DIR}/libSDL2.a")
 set(SDL2_IMAGE_LIB "${LIB_DIR}/libSDL2_image.a")
 set(SDL2_TTF_LIB "${LIB_DIR}/libSDL2_ttf.a")
@@ -253,6 +254,7 @@ set_target_properties(mkxpz PROPERTIES
 
 # Link libraries
 target_link_libraries(mkxpz
+    ${SDL2_MAIN_LIB}
     ${SDL2_LIB}
     ${SDL2_IMAGE_LIB}
     ${SDL2_TTF_LIB}
@@ -277,6 +279,8 @@ target_link_libraries(mkxpz
     "-framework CoreGraphics"
     "-framework CoreMotion"
     "-framework GameController"
+    "-framework CoreBluetooth"
+    "-framework CoreHaptics"
     "-framework Metal"
     "-framework QuartzCore"
     "-framework AVFoundation"
