@@ -238,6 +238,9 @@ target_compile_options(mkxpz PRIVATE
 set_target_properties(mkxpz PROPERTIES 
     MACOSX_BUNDLE_GUI_IDENTIFIER "org.mkxpz.player"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.mkxpz.player"
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+    XCODE_ATTRIBUTE_DEVELOPMENT_TEAM ""
 )
 
 # Link libraries
