@@ -102,10 +102,10 @@ void graphicsBindingInit();
 void fileIntBindingInit();
 
 // Forward declarations for static Ruby extensions (C functions from libruby.a)
-extern "C" void Init_zlib(void);
-extern "C" void Init_enc(void);
-extern "C" void Init_Encoding(void);
-extern "C" void Init_encodings(void);
+extern "C" __attribute__((weak)) void Init_zlib(void);
+extern "C" __attribute__((weak)) void Init_enc(void);
+extern "C" __attribute__((weak)) void Init_Encoding(void);
+extern "C" __attribute__((weak)) void Init_encodings(void);
 
 #ifdef MKXPZ_MINIFFI
 void MiniFFIBindingInit();
