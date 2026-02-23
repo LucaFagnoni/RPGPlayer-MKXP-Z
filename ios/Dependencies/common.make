@@ -64,6 +64,8 @@ RUBY_CONFIGURE_ARGS := \
 	--build=$(RBUILD) \
 	ac_cv_func_setresuid=no \
 	ac_cv_func_setresgid=no \
+	ac_cv_func_getentropy=no \
+	ac_cv_header_sys_vnode_h=no \
 	${EXTRA_RUBY_CONFIG_ARGS}
 
 CONFIGURE := $(CONFIGURE_ENV) ./configure $(CONFIGURE_ARGS)
