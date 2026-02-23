@@ -215,7 +215,7 @@ set(PIXMAN_LIB "${LIB_DIR}/libpixman-1.a")
 set(UCHARDET_LIB "${LIB_DIR}/libuchardet.a")
 
 # Ruby
-set(RUBY_LIB "${LIB_DIR}/libruby.a")
+set(RUBY_LIB "${LIB_DIR}/libruby-static.a")
 
 # ====================
 # Static Library Target
