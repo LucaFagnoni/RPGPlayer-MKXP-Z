@@ -66,6 +66,8 @@ RUBY_CONFIGURE_ARGS := \
 	ac_cv_func_setresgid=no \
 	ac_cv_func_getentropy=no \
 	ac_cv_header_sys_vnode_h=no \
+	ac_cv_func_getattrlist=no \
+	ac_cv_func_fgetattrlist=no \
 	${EXTRA_RUBY_CONFIG_ARGS}
 
 CONFIGURE := $(CONFIGURE_ENV) ./configure $(CONFIGURE_ARGS)
@@ -338,8 +340,7 @@ $(DOWNLOADS)/ruby/configure: $(DOWNLOADS)/ruby/configure.ac
 
 $(DOWNLOADS)/ruby/configure.ac:
 	$(CLONE) $(GITHUB)/mkxp-z/ruby $(DOWNLOADS)/ruby --single-branch -b mkxp-z-3.1.3 --depth 1; \
-	sed -i '' '/: $${PRELOADENV=DYLD_INSERT_LIBRARIES}/g' $(DOWNLOADS)/ruby/configure.ac; \
-	sed -i '' 's/# include <sys\/vnode.h>//g' $(DOWNLOADS)/ruby/dir.c
+	sed -i '' '/: $${PRELOADENV=DYLD_INSERT_LIBRARIES}/g' $(DOWNLOADS)/ruby/configure.ac
 
 # ====
 init_dirs:
