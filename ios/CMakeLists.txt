@@ -154,7 +154,6 @@ set(MKXPZ_SOURCES
     
     # Filesystem
     ${MKXPZ_SRC_DIR}/filesystem/filesystem.cpp
-    ${MKXPZ_SRC_DIR}/filesystem/filesystemImpl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/filesystemImplApple-ios.mm  # iOS-specific Apple implementation
     
     # Input
@@ -166,7 +165,6 @@ set(MKXPZ_SOURCES
     ${MKXPZ_SRC_DIR}/net/net.cpp
     
     # System (use iOS-specific version)
-    ${MKXPZ_SRC_DIR}/system/systemImpl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/systemImplApple.mm  # iOS-compatible version
     
     # Ruby Bindings (use iOS-patched version for binding-mri)
