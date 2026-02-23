@@ -44,6 +44,7 @@ add_compile_definitions(
     MKXPZ_MINIFFI  # Enable Win32API module
     _TTF_Font=TTF_Font  # SDL_ttf3 compatibility: maps MKXP-Z's _TTF_Font to TTF_Font
     MKXPZ_NO_SYSTEM_CALL  # Disable std::system() calls on iOS
+    MKXPZ_NO_FLUIDSYNTH   # Disable FluidSynth (not built for iOS)
 )
 
 # ====================

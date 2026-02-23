@@ -71,8 +71,10 @@ void initFluidFunctions()
 		goto fail;
 #endif
 
+#ifndef MKXPZ_NO_FLUIDSYNTH
 FLUID_FUNCS
 FLUID_FUNCS2
+#endif
 
 	return;
 
