@@ -214,8 +214,15 @@ set(PHYSFS_LIB "${LIB_DIR}/libphysfs.a")
 set(PIXMAN_LIB "${LIB_DIR}/libpixman-1.a")
 set(UCHARDET_LIB "${LIB_DIR}/libuchardet.a")
 
-# Ruby
-set(RUBY_LIB "${LIB_DIR}/libruby-static.a")
+# Ruby (Autoconf spits out different names dynamically like libruby-static.a or libruby.3.1-static.a, so we GLOB it)
+file(GLOB RUBY_LIB_FILES "${LIB_DIR}/libruby*a")
+if (RUBY_LIB_FILES)
+    list(GET RUBY_LIB_FILES 0 RUBY_LIB)
+    message(STATUS "Discovered cross-compiled Ruby library: ${RUBY_LIB}")
+else()
+    set(RUBY_LIB "${LIB_DIR}/libruby.a")  # Safe fallback if not yet built
+    message(WARNING "Ruby library not dynamically found, falling back to ${RUBY_LIB}")
+endif()
 
 # ====================
 # Static Library Target
