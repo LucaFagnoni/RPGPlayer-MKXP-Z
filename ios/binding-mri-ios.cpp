@@ -101,11 +101,13 @@ void graphicsBindingInit();
 
 void fileIntBindingInit();
 
-// Forward declarations for static Ruby extensions (C functions from libruby.a)
-extern "C" __attribute__((weak)) void Init_zlib(void);
-extern "C" __attribute__((weak)) void Init_enc(void);
-extern "C" __attribute__((weak)) void Init_Encoding(void);
-extern "C" __attribute__((weak)) void Init_encodings(void);
+// Dummy weak definitions for static Ruby extensions (C functions from libruby.a)
+extern "C" {
+    __attribute__((weak)) void Init_zlib(void) {}
+    __attribute__((weak)) void Init_enc(void) {}
+    __attribute__((weak)) void Init_Encoding(void) {}
+    __attribute__((weak)) void Init_encodings(void) {}
+}
 
 #ifdef MKXPZ_MINIFFI
 void MiniFFIBindingInit();
