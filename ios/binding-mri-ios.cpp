@@ -3645,7 +3645,7 @@ static void mriBindingExecute() {
         // We use the volatile stack_anchor_start declared at the top of this function.
         MKXP_DEBUG_LOG("About to call ruby_init_stack with stack anchor at %p...\n", 
                 (void*)&stack_anchor_start);
-        ruby_init_stack((void*)&stack_anchor_start);
+        ruby_init_stack((volatile VALUE *)&stack_anchor_start);
         MKXP_DEBUG_LOG("ruby_init_stack completed");
         
         MKXP_DEBUG_LOG("About to call ruby_init...");
@@ -3662,7 +3662,7 @@ static void mriBindingExecute() {
         MKXP_DEBUG_LOG("Ruby already initialized, skipping init calls");
         // Even when reusing Ruby, we need to ensure the stack is properly anchored
         // This is important for proper GC behavior across game launches
-        ruby_init_stack((void*)&stack_anchor_start);
+        ruby_init_stack((volatile VALUE *)&stack_anchor_start);
     }
     
     MKXP_DEBUG_LOG("About to call ruby_options...");
@@ -3689,13 +3689,13 @@ static void mriBindingExecute() {
         rubyArgsC.push_back(verboseLevel.c_str());
         rubyArgsC.push_back(maxCache.c_str());
         rubyArgsC.push_back(minCalls.c_str());
-        node = ruby_options(rubyArgsC.size(), const_cast<char**>(rubyArgsC.data()));
+        node = ruby_options(static_cast<int>(rubyArgsC.size()), const_cast<char**>(rubyArgsC.data()));
     } else if (conf.yjit.enabled) {
         rubyArgsC.push_back("--yjit");
         // TODO: Maybe support --yjit-exec-mem-size, --yjit-call-threshold
-        node = ruby_options(rubyArgsC.size(), const_cast<char**>(rubyArgsC.data()));
+        node = ruby_options(static_cast<int>(rubyArgsC.size()), const_cast<char**>(rubyArgsC.data()));
     } else {
-        node = ruby_options(rubyArgsC.size(), const_cast<char**>(rubyArgsC.data()));
+        node = ruby_options(static_cast<int>(rubyArgsC.size()), const_cast<char**>(rubyArgsC.data()));
     }
     MKXP_DEBUG_LOG("ruby_options completed, node=%p\n", node);
     
