@@ -235,6 +235,11 @@ target_compile_options(mkxpz PRIVATE
     -fdeclspec  # For Ruby 3.0+
 )
 
+set_target_properties(mkxpz PROPERTIES 
+    MACOSX_BUNDLE_GUI_IDENTIFIER "org.mkxpz.player"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "org.mkxpz.player"
+)
+
 # Link libraries
 target_link_libraries(mkxpz
     ${SDL2_LIB}
