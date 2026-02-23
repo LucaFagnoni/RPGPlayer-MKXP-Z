@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ====================
 
 # Path to pre-built iOS dependencies
-set(DEPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/ios_dist")
+set(DEPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../deps/ios_dist")
 
 # Platform detection for device vs simulator
 if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
@@ -84,8 +84,8 @@ include_directories(
     ${DEPS_DIR}/include/pixman-1  # pixman.h
     ${DEPS_DIR}/include/freetype2  # ft2build.h
     ${DEPS_DIR}/include/uchardet
-    ${DEPS_DIR}/include/ruby-4.0.0+0
-    ${DEPS_DIR}/include/ruby-4.0.0+0/aarch64-ios  # iOS-specific Ruby config.h
+    ${DEPS_DIR}/include/ruby-3.1.0
+    ${DEPS_DIR}/include/ruby-3.1.0/arm64-darwin  # iOS-specific Ruby config.h
 )
 
 # ====================
